@@ -1,0 +1,11 @@
+*fzfkasten.txt* for Fzfkasten.nvim
+
+Fzfkasten.nvim is a lightweight and fast Zettelkasten plugin for Neovim, using fzf-lua.
+
+COMMANDS
+
+- FzfKastenDaily: Open today's daily note.
+- FzfKastenWeekly: Open this week's weekly note.
+- FzfKastenFindNotes: Search for notes.
+- FzfKastenTags: Search for tags.
+- FzfKastenInsert: Insert a link to a note.
