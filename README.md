@@ -24,6 +24,9 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **Template Engine**: Simple `{{title}}`, `{{date}}`, and `{{hdate}}` placeholders.
 - [x] **External Commands**: Append external data (like `gcalcli`) to daily notes.
 - [x] **Fzfkasten Panel**: A central menu for common actions.
+- [x] **New Templated Notes**: Create new notes from predefined templates with interactive selection.
+- [x] **Find Daily Notes**: Interactively find and open existing daily notes.
+- [x] **Find Weekly Notes**: Interactively find and open existing weekly notes.
 
 ### Pending / Under Development
 - [ ] Improved link aliasing support (`[[note|alias]]`).
@@ -94,6 +97,18 @@ Here is the default configuration. You can override any of these settings in the
   },
 }
 ```
+
+## Usage
+
+Fzfkasten provides several commands for managing your Zettelkasten notes:
+
+*   **`:FzfKastenNewNote`**: Creates a new note. You will be prompted for a title and then presented with an `fzf-lua` picker to select an optional template from your `home/templates` directory. If no template is selected, it defaults to a basic note structure.
+
+*   **`:FzfKastenFindDailyNotes`**: Opens an `fzf-lua` picker to search and open existing daily notes from your `home/daily` directory.
+
+*   **`:FzfKastenFindWeeklyNotes`**: Opens an `fzf-lua` picker to search and open existing weekly notes from your `home/weekly` directory.
+
+*   **Other existing commands:** (e.g., `:FzfKastenDaily`, `:FzfKastenWeekly`, `:FzfKastenFindNotes`, `:FzfKastenTags`, `:FzfKastenInsert`, etc.)
 
 ## Google Calendar Integration
 
