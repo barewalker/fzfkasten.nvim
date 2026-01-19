@@ -10,4 +10,6 @@ M.new_note = function() require('fzfkasten.core').create_new_note_interactively(
 M.panel = function() require('fzfkasten.pickers').panel() end
 M.follow_link = function() require('fzfkasten.pickers').follow_link() end
 M.show_backlinks = function() require('fzfkasten.pickers').show_backlinks() end
+M.find_daily_notes = function() require('fzfkasten.pickers').find_daily_notes_picker() end
+M.find_weekly_notes = function() require('fzfkasten.pickers').find_weekly_notes_picker() end
 return M

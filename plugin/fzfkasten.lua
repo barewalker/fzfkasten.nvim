@@ -9,3 +9,5 @@ cmd("FzfKastenNewNote", function() require('fzfkasten').new_note() end, { desc =
 cmd("FzfKastenPanel", function() require('fzfkasten').panel() end, { desc = "Fzfkasten: Panel" })
 cmd("FzfKastenFollowLink", function() require('fzfkasten').follow_link() end, { desc = "Fzfkasten: Follow Link" })
 cmd("FzfKastenShowBacklinks", function() require('fzfkasten').show_backlinks() end, { desc = "Fzfkasten: Show Backlinks" })
+cmd("FzfKastenFindDailyNotes", function() require('fzfkasten').find_daily_notes() end, { desc = "Fzfkasten: Find Daily Notes" })
+cmd("FzfKastenFindWeeklyNotes", function() require('fzfkasten').find_weekly_notes() end, { desc = "Fzfkasten: Find Weekly Notes" })

@@ -215,4 +215,64 @@ function M.follow_link()
     }))
 end
 
+function M.select_template(callback)
+    local templates_dir = utils.join_path(config.options.home, "templates")
+
+    fzf.files(vim.tbl_deep_extend("force", config.options.fzf.files, {
+        cwd = templates_dir,
+        prompt = "Select Template> ",
+        actions = {
+            ['default'] = function(selected)
+                if selected and #selected > 0 then
+                    local raw_filename = vim.fn.fnamemodify(selected[1], ":t")
+                    -- Robustly remove leading non-filename characters (icons) and any subsequent whitespace.
+                    local clean_filename = raw_filename:gsub("^[^%w%d_%.%-]+%s*", "")
+                    if callback then
+                        callback(clean_filename)
+                    end
+                else
+                    if callback then
+                        callback(nil) -- User cancelled or no selection
+                    end
+                end
+            end,
+            ['ctrl-c'] = function()
+                if callback then
+                    callback(nil) -- User cancelled
+                end
+            end,
+        }
+    }))
+end
+
+function M.find_daily_notes_picker()
+    local daily_dir = utils.join_path(config.options.home, config.options.notes.daily.dir)
+    fzf.files(vim.tbl_deep_extend("force", config.options.fzf.files, {
+        cwd = daily_dir,
+        prompt = "Find Daily Note> ",
+        actions = {
+            ['default'] = function(selected)
+                if selected and #selected > 0 then
+                    vim.cmd("edit " .. selected[1])
+                end
+            end,
+        }
+    }))
+end
+
+function M.find_weekly_notes_picker()
+    local weekly_dir = utils.join_path(config.options.home, config.options.notes.weekly.dir)
+    fzf.files(vim.tbl_deep_extend("force", config.options.fzf.files, {
+        cwd = weekly_dir,
+        prompt = "Find Weekly Note> ",
+        actions = {
+            ['default'] = function(selected)
+                if selected and #selected > 0 then
+                    vim.cmd("edit " .. selected[1])
+                end
+            end,
+        }
+    }))
+end
+
 return M
