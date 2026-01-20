@@ -9,12 +9,64 @@ function M.find_notes()
     }))
 end
 function M.search_tags()
+    -- Use a regex that strictly matches #tag
+    local rg_tag_pattern = "#[a-zA-Z0-9_-]+"
+
     fzf.grep(vim.tbl_deep_extend("force", config.options.fzf, {
-        search = config.options.patterns.tag,
+        search = rg_tag_pattern,
         cwd = config.options.home,
         prompt = "Tags> ",
         rg_opts = "--column --line-number --no-heading --color=always --smart-case --only-matching -e",
         no_esc = true,
+    }))
+end
+
+function M.search_by_tag()
+    -- 1. Extract all unique tags
+    -- Lua pattern: # followed by alphanumeric, _, or -
+    local tag_lua_pattern = "#([%w_-]+)"
+    local all_notes_pattern = utils.join_path(config.options.home, "**/*." .. config.options.extension)
+    local all_notes = vim.fn.glob(all_notes_pattern, true, true)
+    
+    local tags_set = {}
+    for _, note_file in ipairs(all_notes) do
+        local file = io.open(note_file, "r")
+        if file then
+            local content = file:read("*a")
+            file:close()
+            -- In Lua, we match the tag name following the #
+            for tag_name in string.gmatch(content, tag_lua_pattern) do
+                tags_set["#" .. tag_name] = true
+            end
+        end
+    end
+
+    local tags_list = {}
+    for tag, _ in pairs(tags_set) do
+        table.insert(tags_list, tag)
+    end
+    table.sort(tags_list)
+
+    if #tags_list == 0 then
+        vim.notify("No tags found in your Zettelkasten.", vim.log.levels.INFO)
+        return
+    end
+
+    -- 2. Show tags in fzf
+    fzf.fzf_exec(tags_list, vim.tbl_deep_extend("force", config.options.fzf, {
+        prompt = "Select Tag> ",
+        actions = {
+            ['default'] = function(selected)
+                if not selected or #selected == 0 then return end
+                local tag = selected[1]
+                -- 3. Search for the selected tag across all notes
+                fzf.grep(vim.tbl_deep_extend("force", config.options.fzf, {
+                    search = tag .. " ", -- Add space to match tag exactly if followed by space
+                    cwd = config.options.home,
+                    prompt = "Notes with " .. tag .. "> ",
+                }))
+            end
+        }
     }))
 end
 function M.insert_link()
@@ -141,29 +193,30 @@ function M.panel()
                 local actions = {
                     "Open: " .. selected_note_path,
                     "Show Backlinks: " .. selected_note_path,
+                    "Rename: " .. selected_note_path,
                     "Delete: " .. selected_note_path,
                 }
 
-                fzf.run(vim.tbl_deep_extend("force", config.options.fzf, {
+                fzf.fzf_exec(actions, vim.tbl_deep_extend("force", config.options.fzf, {
                     prompt = "Action> ",
-                    input = actions, -- input expects a table of strings for fzf.run
                     actions = {
                         ['default'] = function(action_selected)
-                            vim.notify("DEBUG: action_selected BEFORE GUARD: " .. vim.inspect(action_selected), vim.log.levels.INFO)
-                            if not action_selected then return end
-                            vim.notify("DEBUG: action_selected: " .. vim.inspect(action_selected), vim.log.levels.INFO)
-                            if action_selected:find("Open:") then
+                            if not action_selected or #action_selected == 0 then return end
+                            local selection = action_selected[1]
+
+                            if selection:find("Open:") then
                                 vim.cmd("edit " .. selected_note_path)
-                            elseif action_selected:find("Show Backlinks:") then
-                                local path_from_action = action_selected:match("^%s*Show Backlinks:%s*(.*)$")
-                                vim.notify("DEBUG: path_from_action: '" .. tostring(path_from_action) .. "'", vim.log.levels.INFO)
+                            elseif selection:find("Show Backlinks:") then
+                                local path_from_action = selection:match("^%s*Show Backlinks:%s*(.*)$")
                                 if path_from_action then
-                                    vim.notify("DEBUG: Calling show_backlinks with filepath: '" .. tostring(path_from_action) .. "'", vim.log.levels.INFO)
-                                    show_backlinks(path_from_action)
-                                else
-                                    vim.notify("Error: Could not extract path from selected action: '" .. tostring(action_selected) .. "'", vim.log.levels.ERROR)
+                                    M.show_backlinks(path_from_action)
                                 end
-                            elseif action_selected:find("Delete:") then
+                            elseif selection:find("Rename:") then
+                                local path_from_action = selection:match("^%s*Rename:%s*(.*)$")
+                                if path_from_action then
+                                    require('fzfkasten.core').rename_note_interactively(path_from_action)
+                                end
+                            elseif selection:find("Delete:") then
                                 local confirmation = vim.fn.input("Confirm deletion of " .. selected_note_path .. " (yes/no)? ")
                                 if confirmation:lower() == "yes" then
                                     vim.fn.delete(selected_note_path)
@@ -253,7 +306,10 @@ function M.find_daily_notes_picker()
         actions = {
             ['default'] = function(selected)
                 if selected and #selected > 0 then
-                    vim.cmd("edit " .. selected[1])
+                    local full_path = utils.join_path(daily_dir, selected[1])
+                    vim.cmd("edit " .. full_path)
+                    local title = vim.fn.fnamemodify(full_path, ":t:r")
+                    require('fzfkasten.core').apply_note_template("daily", title)
                 end
             end,
         }
@@ -268,7 +324,10 @@ function M.find_weekly_notes_picker()
         actions = {
             ['default'] = function(selected)
                 if selected and #selected > 0 then
-                    vim.cmd("edit " .. selected[1])
+                    local full_path = utils.join_path(weekly_dir, selected[1])
+                    vim.cmd("edit " .. full_path)
+                    local title = vim.fn.fnamemodify(full_path, ":t:r")
+                    require('fzfkasten.core').apply_note_template("weekly", title)
                 end
             end,
         }

@@ -108,6 +108,8 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
 
 *   **`:FzfKastenFindWeeklyNotes`**: Opens an `fzf-lua` picker to search and open existing weekly notes from your `home/weekly` directory.
 
+*   **`:FzfKastenSearchByTag`**: First presents a list of all unique tags in your Zettelkasten, then displays notes containing the selected tag.
+
 *   **Other existing commands:** (e.g., `:FzfKastenDaily`, `:FzfKastenWeekly`, `:FzfKastenFindNotes`, `:FzfKastenTags`, `:FzfKastenInsert`, etc.)
 
 ## Google Calendar Integration

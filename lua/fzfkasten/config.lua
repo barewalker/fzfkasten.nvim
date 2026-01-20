@@ -6,22 +6,21 @@ M.defaults = {
  extension = "md",
  hdate_format = "%B %d, %Y",
  new_note_template = nil,
- patterns = {
-  tag = [[#([\w_-]+)]],
-  link = [[%[%[(.-)%]%]],
- },
- notes = {
+   patterns = {
+     tag = [[#([%w_-]+)]],
+     link = [=[%[%[(.-)%]%]]=],
+   }, notes = {
   daily = {
    dir = "daily",
    format = "%Y-%m-%d",
-   template = "templates/daily.md",
+   template = "daily.md",
    use_external_cmd = false,
    external_cmd = "gcalcli agenda --tsv",
   },
   weekly = {
    dir = "weekly",
    format = "%Y-W%V",
-   template = "templates/weekly.md",
+   template = "weekly.md",
   },
  },
  transform = {
