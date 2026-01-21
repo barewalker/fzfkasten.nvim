@@ -1,0 +1,21 @@
+# Logs
+error-log.txt
+
+# Internal Specs
+fzfkasten_spec.md
+
+# Testing and Examples
+minimal_init.lua
+fzfkasten.lua
+fzfkasten-lazyvim-example.lua
+fzfkasten-lazyvim-keys-example.lua
+
+# Neovim swap files
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+
+# Tags
+tags

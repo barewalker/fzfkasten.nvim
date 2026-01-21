@@ -23,7 +23,7 @@ function M.open_note(note_type)
     end
 
     local is_new = vim.fn.filereadable(full_path) == 0
-    vim.cmd("edit " .. full_path)
+    vim.cmd("edit " .. vim.fn.fnameescape(full_path))
 
     if is_new then
         M.apply_note_template(note_type, date_str)
@@ -77,7 +77,7 @@ function M.create_new_note_interactively()
         local filename = sanitized_title .. "." .. config.options.extension
         local full_path = utils.join_path(config.options.home, filename)
 
-        vim.cmd("edit " .. full_path)
+        vim.cmd("edit " .. vim.fn.fnameescape(full_path))
 
         local current_buf = vim.api.nvim_get_current_buf()
 

@@ -5,7 +5,15 @@ local M = {}
 
 function M.find_notes()
     fzf.files(vim.tbl_deep_extend("force", config.options.fzf.files, {
-        cwd = config.options.home, prompt = "Notes> "
+        cwd = config.options.home,
+        prompt = "Notes> ",
+        actions = {
+            ['default'] = function(selected)
+                if not selected or #selected == 0 then return end
+                local entry = fzf.path.entry_to_file(selected[1], { cwd = config.options.home })
+                vim.cmd("edit " .. vim.fn.fnameescape(entry.path))
+            end
+        }
     }))
 end
 function M.search_tags()
@@ -18,6 +26,16 @@ function M.search_tags()
         prompt = "Tags> ",
         rg_opts = "--column --line-number --no-heading --color=always --smart-case --only-matching -e",
         no_esc = true,
+        actions = {
+            ['default'] = function(selected)
+                if not selected or #selected == 0 then return end
+                local entry = fzf.path.entry_to_file(selected[1], { cwd = config.options.home })
+                vim.cmd("edit " .. vim.fn.fnameescape(entry.path))
+                if entry.line then
+                    vim.api.nvim_win_set_cursor(0, { entry.line, (entry.col or 1) - 1 })
+                end
+            end
+        }
     }))
 end
 
@@ -58,12 +76,23 @@ function M.search_by_tag()
         actions = {
             ['default'] = function(selected)
                 if not selected or #selected == 0 then return end
+                -- fzf_exec returns the raw string from tags_list
                 local tag = selected[1]
                 -- 3. Search for the selected tag across all notes
                 fzf.grep(vim.tbl_deep_extend("force", config.options.fzf, {
                     search = tag .. " ", -- Add space to match tag exactly if followed by space
                     cwd = config.options.home,
                     prompt = "Notes with " .. tag .. "> ",
+                    actions = {
+                        ['default'] = function(grep_selected)
+                            if not grep_selected or #grep_selected == 0 then return end
+                            local entry = fzf.path.entry_to_file(grep_selected[1], { cwd = config.options.home })
+                            vim.cmd("edit " .. vim.fn.fnameescape(entry.path))
+                            if entry.line then
+                                vim.api.nvim_win_set_cursor(0, { entry.line, (entry.col or 1) - 1 })
+                            end
+                        end
+                    }
                 }))
             end
         }
@@ -74,7 +103,9 @@ function M.insert_link()
         cwd = config.options.home,
         actions = {
             ['default'] = function(selected)
-                local file = vim.fn.fnamemodify(selected[1], ":t:r")
+                if not selected or #selected == 0 then return end
+                local entry = fzf.path.entry_to_file(selected[1], { cwd = config.options.home })
+                local file = vim.fn.fnamemodify(entry.path, ":t:r")
                 vim.api.nvim_put({ config.options.transform.insert_link(file) }, "c", true, true)
             end
         }
@@ -87,6 +118,16 @@ function M.search_content()
         cwd = config.options.home,
         prompt = "Grep> ",
         no_ignore = true,
+        actions = {
+            ['default'] = function(selected)
+                if not selected or #selected == 0 then return end
+                local entry = fzf.path.entry_to_file(selected[1], { cwd = config.options.home })
+                vim.cmd("edit " .. vim.fn.fnameescape(entry.path))
+                if entry.line then
+                    vim.api.nvim_win_set_cursor(0, { entry.line, (entry.col or 1) - 1 })
+                end
+            end
+        }
     }))
 end
 
@@ -168,12 +209,12 @@ function M.show_backlinks(filepath)
         actions = {
             ['default'] = function(selected_backlink)
                 if not selected_backlink or #selected_backlink == 0 then return end
-                -- Extract the file path from the selected backlink string (e.g., "path/to/note.md:123: link_line")
-                local backlink_file_path = selected_backlink[1]:match("^(.-):%d+:")
-                if backlink_file_path then
-                    -- Expand path to full path and remove trailing ':' from match
-                    local full_path = vim.fn.fnamemodify(backlink_file_path:gsub(":%d+:", ""), ":p")
-                    vim.cmd("edit " .. full_path)
+                local entry = fzf.path.entry_to_file(selected_backlink[1], { cwd = config.options.home })
+                if entry.path then
+                    vim.cmd("edit " .. vim.fn.fnameescape(entry.path))
+                    if entry.line then
+                        vim.api.nvim_win_set_cursor(0, { entry.line, (entry.col or 1) - 1 })
+                    end
                 else
                     vim.notify("Could not open backlink: " .. selected_backlink[1], vim.log.levels.ERROR)
                 end
@@ -189,12 +230,13 @@ function M.panel()
         actions = {
             ['default'] = function(selected)
                 if not selected or #selected == 0 then return end
-                local selected_note_path = selected[1]
+                local entry = fzf.path.entry_to_file(selected[1], { cwd = config.options.home })
+                local clean_path = entry.path
                 local actions = {
-                    "Open: " .. selected_note_path,
-                    "Show Backlinks: " .. selected_note_path,
-                    "Rename: " .. selected_note_path,
-                    "Delete: " .. selected_note_path,
+                    "Open: " .. clean_path,
+                    "Show Backlinks: " .. clean_path,
+                    "Rename: " .. clean_path,
+                    "Delete: " .. clean_path,
                 }
 
                 fzf.fzf_exec(actions, vim.tbl_deep_extend("force", config.options.fzf, {
@@ -205,22 +247,16 @@ function M.panel()
                             local selection = action_selected[1]
 
                             if selection:find("Open:") then
-                                vim.cmd("edit " .. selected_note_path)
+                                vim.cmd("edit " .. vim.fn.fnameescape(clean_path))
                             elseif selection:find("Show Backlinks:") then
-                                local path_from_action = selection:match("^%s*Show Backlinks:%s*(.*)$")
-                                if path_from_action then
-                                    M.show_backlinks(path_from_action)
-                                end
+                                M.show_backlinks(clean_path)
                             elseif selection:find("Rename:") then
-                                local path_from_action = selection:match("^%s*Rename:%s*(.*)$")
-                                if path_from_action then
-                                    require('fzfkasten.core').rename_note_interactively(path_from_action)
-                                end
+                                require('fzfkasten.core').rename_note_interactively(clean_path)
                             elseif selection:find("Delete:") then
-                                local confirmation = vim.fn.input("Confirm deletion of " .. selected_note_path .. " (yes/no)? ")
+                                local confirmation = vim.fn.input("Confirm deletion of " .. clean_path .. " (yes/no)? ")
                                 if confirmation:lower() == "yes" then
-                                    vim.fn.delete(selected_note_path)
-                                    vim.notify("Deleted: " .. selected_note_path, vim.log.levels.INFO)
+                                    vim.fn.delete(clean_path)
+                                    vim.notify("Deleted: " .. clean_path, vim.log.levels.INFO)
                                 else
                                     vim.notify("Deletion cancelled.", vim.log.levels.INFO)
                                 end
@@ -259,7 +295,7 @@ function M.follow_link()
                 if not selected_link or #selected_link == 0 then return end
                 local target_file = utils.join_path(config.options.home, selected_link[1] .. "." .. config.options.extension)
                 if vim.fn.filereadable(target_file) == 1 then
-                    vim.cmd("edit " .. target_file)
+                    vim.cmd("edit " .. vim.fn.fnameescape(target_file))
                 else
                     vim.notify("Note not found: " .. target_file, vim.log.levels.ERROR)
                 end
@@ -277,9 +313,8 @@ function M.select_template(callback)
         actions = {
             ['default'] = function(selected)
                 if selected and #selected > 0 then
-                    local raw_filename = vim.fn.fnamemodify(selected[1], ":t")
-                    -- Robustly remove leading non-filename characters (icons) and any subsequent whitespace.
-                    local clean_filename = raw_filename:gsub("^[^%w%d_%.%-]+%s*", "")
+                    local entry = fzf.path.entry_to_file(selected[1], { cwd = templates_dir })
+                    local clean_filename = vim.fn.fnamemodify(entry.path, ":t")
                     if callback then
                         callback(clean_filename)
                     end
@@ -306,8 +341,9 @@ function M.find_daily_notes_picker()
         actions = {
             ['default'] = function(selected)
                 if selected and #selected > 0 then
-                    local full_path = utils.join_path(daily_dir, selected[1])
-                    vim.cmd("edit " .. full_path)
+                    local entry = fzf.path.entry_to_file(selected[1], { cwd = daily_dir })
+                    local full_path = entry.path
+                    vim.cmd("edit " .. vim.fn.fnameescape(full_path))
                     local title = vim.fn.fnamemodify(full_path, ":t:r")
                     require('fzfkasten.core').apply_note_template("daily", title)
                 end
@@ -324,8 +360,9 @@ function M.find_weekly_notes_picker()
         actions = {
             ['default'] = function(selected)
                 if selected and #selected > 0 then
-                    local full_path = utils.join_path(weekly_dir, selected[1])
-                    vim.cmd("edit " .. full_path)
+                    local entry = fzf.path.entry_to_file(selected[1], { cwd = weekly_dir })
+                    local full_path = entry.path
+                    vim.cmd("edit " .. vim.fn.fnameescape(full_path))
                     local title = vim.fn.fnamemodify(full_path, ":t:r")
                     require('fzfkasten.core').apply_note_template("weekly", title)
                 end
