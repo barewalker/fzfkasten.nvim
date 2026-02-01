@@ -16,11 +16,13 @@ M.defaults = {
    template = "daily.md",
    use_external_cmd = false,
    external_cmd = "gcalcli agenda --tsv",
+   file_command = "ls -t -p | grep -v /", -- Command to list daily notes, sorted recent top
   },
   weekly = {
    dir = "weekly",
    format = "%Y-W%V",
    template = "weekly.md",
+   file_command = "ls -t -p | grep -v /", -- Command to list weekly notes, sorted recent top
   },
  },
  transform = {
@@ -31,21 +33,24 @@ M.defaults = {
    return title
   end,
  },
- fzf = {
-  winopts = {
-   height = 0.85,
-   width = 0.80,
-   preview = { layout = "vertical" },
-  },
-  fzf_opts = {
-    ["--bind"] = "ctrl-h:backward-delete-char",
-  },
-  files = {
-   previewer = "builtin",
-  },
- },
-}
-
+    fzf = {
+     winopts = {
+       height = 0.85,
+       width = 0.80,
+       preview = { layout = "vertical" },
+     },
+     fzf_opts = {
+       ["--bind"] = "ctrl-h:backward-delete-char",
+     },
+     files = {
+       previewer = "builtin",
+     },
+   },
+   cmp = {
+     tag_trigger = "#", -- Default trigger character for tag completion
+     tag_pattern = [[#([%w_-]+)]], -- Default regex for extracting tags from notes
+   },
+ }
 M.options = vim.tbl_deep_extend("force", M.defaults, {})
 
 function M.setup(user_opts)

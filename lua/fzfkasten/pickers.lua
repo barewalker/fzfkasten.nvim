@@ -17,32 +17,89 @@ function M.find_notes()
     }))
 end
 function M.search_tags()
-    -- Use a regex that strictly matches #tag
-    local rg_tag_pattern = "#[a-zA-Z0-9_-]+"
+    local home_dir = config.options.home
+    local tag_lua_pattern = config.options.patterns.tag
 
-    fzf.grep(vim.tbl_deep_extend("force", config.options.fzf, {
-        search = rg_tag_pattern,
-        cwd = config.options.home,
-        prompt = "Tags> ",
-        rg_opts = "--column --line-number --no-heading --color=always --smart-case --only-matching -e",
-        no_esc = true,
-        actions = {
-            ['default'] = function(selected)
-                if not selected or #selected == 0 then return end
-                local entry = fzf.path.entry_to_file(selected[1], { cwd = config.options.home })
-                vim.cmd("edit " .. vim.fn.fnameescape(entry.path))
-                if entry.line then
-                    vim.api.nvim_win_set_cursor(0, { entry.line, (entry.col or 1) - 1 })
+    -- Simplified rg command: Use -o -r '$1' to print only the first capture group (the tag name).
+    local rg_cmd = string.format(
+        "rg --no-heading --color never --glob '*.%s' --pcre2 -o -r '$1' --regexp '%s' %s",
+        config.options.extension,
+        tag_lua_pattern,
+        home_dir
+    )
+
+    local all_tags = {}
+
+    vim.fn.jobstart(rg_cmd, {
+        on_stdout = vim.schedule_wrap(function(_, data)
+            if data then
+                for _, captured_tag in ipairs(data) do
+                    if captured_tag and captured_tag ~= '' then
+                        -- Reconstruct the full tag, as rg -o gives us the captured part
+                        local full_tag = config.options.cmp.tag_trigger .. captured_tag
+                        table.insert(all_tags, full_tag)
+                    end
                 end
             end
-        }
-    }))
+        end),
+        on_stderr = vim.schedule_wrap(function(_, data)
+            if data and #data > 0 and data[1] ~= '' then
+                vim.notify("[Fzfkasten] rg error: " .. table.concat(data, "\n"), vim.log.levels.ERROR)
+            end
+        end),
+        on_exit = vim.schedule_wrap(function()
+            if #all_tags == 0 then
+                vim.notify("No tags found in your Zettelkasten.", vim.log.levels.INFO)
+                return
+            end
+
+            -- Deduplicate
+            local tags_set = {}
+            for _, tag in ipairs(all_tags) do
+                tags_set[tag] = true
+            end
+
+            local tags_list = {}
+            for tag, _ in pairs(tags_set) do
+                table.insert(tags_list, tag)
+            end
+            table.sort(tags_list)
+
+            vim.notify("DEBUG [M.search_tags]: Final tags_list size: " .. tostring(#tags_list), vim.log.levels.INFO)
+
+            fzf.fzf_exec(tags_list, vim.tbl_deep_extend("force", config.options.fzf, {
+                prompt = "Tags> ",
+                actions = {
+                    ['default'] = function(selected)
+                        if not selected or #selected == 0 then return end
+                        local tag = selected[1]
+                        -- Search for the selected tag across all notes
+                        fzf.grep(vim.tbl_deep_extend("force", config.options.fzf, {
+                            search = tag .. " ", -- Add space to match tag exactly if followed by space
+                            cwd = config.options.home,
+                            prompt = "Notes with " .. tag .. "> ",
+                            actions = {
+                                ['default'] = function(grep_selected)
+                                    if not grep_selected or #grep_selected == 0 then return end
+                                    local entry = fzf.path.entry_to_file(grep_selected[1], { cwd = config.options.home })
+                                    vim.cmd("edit " .. vim.fn.fnameescape(entry.path))
+                                    if entry.line then
+                                        vim.api.nvim_win_set_cursor(0, { entry.line, (entry.col or 1) - 1 })
+                                    end
+                                end
+                            }
+                        }))
+                    end
+                }
+            }))
+        end),
+    })
 end
 
 function M.search_by_tag()
     -- 1. Extract all unique tags
     -- Lua pattern: # followed by alphanumeric, _, or -
-    local tag_lua_pattern = "#([%w_-]+)"
+    local tag_lua_pattern = config.options.patterns.tag
     local all_notes_pattern = utils.join_path(config.options.home, "**/*." .. config.options.extension)
     local all_notes = vim.fn.glob(all_notes_pattern, true, true)
     
@@ -52,9 +109,13 @@ function M.search_by_tag()
         if file then
             local content = file:read("*a")
             file:close()
-            -- In Lua, we match the tag name following the #
-            for tag_name in string.gmatch(content, tag_lua_pattern) do
-                tags_set["#" .. tag_name] = true
+            vim.notify("DEBUG [M.search_by_tag]: tag_lua_pattern: " .. tostring(tag_lua_pattern), vim.log.levels.INFO)
+            for captured_tag_name in string.gmatch(content, tag_lua_pattern) do
+                vim.notify("DEBUG [M.search_by_tag]: captured_tag_name: " .. tostring(captured_tag_name), vim.log.levels.INFO)
+                -- Prepend the tag_trigger to the captured name to form the full tag
+                local full_tag = config.options.cmp.tag_trigger .. captured_tag_name
+                vim.notify("DEBUG [M.search_by_tag]: full_tag: " .. tostring(full_tag), vim.log.levels.INFO)
+                tags_set[full_tag] = true
             end
         end
     end
@@ -83,6 +144,7 @@ function M.search_by_tag()
                     search = tag .. " ", -- Add space to match tag exactly if followed by space
                     cwd = config.options.home,
                     prompt = "Notes with " .. tag .. "> ",
+                    rg_opts = vim.tbl_get(config.options.fzf, "rg_opts") or "", -- Pass along any custom rg_opts
                     actions = {
                         ['default'] = function(grep_selected)
                             if not grep_selected or #grep_selected == 0 then return end
@@ -170,7 +232,9 @@ function M.show_backlinks(filepath)
 
     -- Construct a regex to find links to the target note
     -- This regex looks for [[target_note_name]] or [[target_note_name|alias]]
-    local link_search_pattern = "\\[\\[" .. target_note_name:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1") .. "(\\|.-)?\\]\\]"
+    -- Using string.format and gsub for robustness in escaping target_note_name
+    local escaped_target_name = target_note_name:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1")
+    local link_search_pattern = "%%[%[" .. escaped_target_name .. "(%%|.-)?%%]%]]"
 
     for _, note_file in ipairs(all_note_files) do
         if note_file ~= filepath then -- Don't search in the current file itself
@@ -183,7 +247,7 @@ function M.show_backlinks(filepath)
                 for line_num, line in ipairs(vim.split(content, "\n", { plain = true })) do
                     for link_full_content in string.gmatch(line, config.options.patterns.link) do
                         -- link_full_content will be "1on1" or "1on1|alias"
-                        local link_target_name = link_full_content:match("^(.-)|.*$") or link_full_content
+                        local link_target_name = link_full_content:match("^(.-)|.*") or link_full_content
                         if link_target_name == target_note_name then
                             -- Found a backlink
                             table.insert(backlinks, string.format("%s:%d: %s",
@@ -338,6 +402,7 @@ function M.find_daily_notes_picker()
     fzf.files(vim.tbl_deep_extend("force", config.options.fzf.files, {
         cwd = daily_dir,
         prompt = "Find Daily Note> ",
+        cmd = config.options.notes.daily.file_command,
         actions = {
             ['default'] = function(selected)
                 if selected and #selected > 0 then
@@ -357,6 +422,7 @@ function M.find_weekly_notes_picker()
     fzf.files(vim.tbl_deep_extend("force", config.options.fzf.files, {
         cwd = weekly_dir,
         prompt = "Find Weekly Note> ",
+        cmd = config.options.notes.weekly.file_command,
         actions = {
             ['default'] = function(selected)
                 if selected and #selected > 0 then

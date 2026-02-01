@@ -14,4 +14,8 @@ M.show_backlinks = function() require('fzfkasten.pickers').show_backlinks(vim.ap
 M.rename_note = function() require('fzfkasten.core').rename_note_interactively() end
 M.find_daily_notes = function() require('fzfkasten.pickers').find_daily_notes_picker() end
 M.find_weekly_notes = function() require('fzfkasten.pickers').find_weekly_notes_picker() end
+local cmp_ok, cmp = pcall(require, "cmp")
+  if cmp_ok then
+    cmp.register_source("fzfkasten_tags", require("fzfkasten.cmp").new(M.config.options.cmp))
+  end
 return M
