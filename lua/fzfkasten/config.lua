@@ -16,11 +16,13 @@ M.defaults = {
    template = "daily.md",
    use_external_cmd = false,
    external_cmd = "gcalcli agenda --tsv",
+   fzf_opts = {},
   },
   weekly = {
    dir = "weekly",
    format = "%Y-W%V",
    template = "weekly.md",
+   fzf_opts = {},
   },
  },
  transform = {

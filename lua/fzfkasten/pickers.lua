@@ -349,7 +349,7 @@ function M.find_daily_notes_picker()
                 end
             end,
         }
-    }))
+    }, config.options.notes.daily.fzf_opts or {}))
 end
 
 function M.find_weekly_notes_picker()
@@ -368,7 +368,7 @@ function M.find_weekly_notes_picker()
                 end
             end,
         }
-    }))
+    }, config.options.notes.weekly.fzf_opts or {}))
 end
 
 return M
