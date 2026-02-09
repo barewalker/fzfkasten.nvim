@@ -51,12 +51,20 @@ function M.load_template(rel_path, title)
     -- Gracefully handle cases where rel_path might already include "templates/"
     local clean_rel_path = rel_path:gsub("^templates/", "")
     local abs_path = utils.join_path(config.options.home, "templates", clean_rel_path)
-    
+
     if vim.fn.filereadable(abs_path) == 0 then
         return "# " .. title
     end
     local data = table.concat(vim.fn.readfile(abs_path), "\n")
-    local final_content = data:gsub("{{title}}", title):gsub("{{date}}", os.date("%Y-%m-%d")):gsub("{{hdate}}", os.date(config.options.hdate_format))
+
+    -- Replace template variables
+    local final_content = data
+        :gsub("{{title}}", title)
+        :gsub("{{date}}", os.date("%Y-%m-%d"))
+        :gsub("{{hdate}}", os.date(config.options.hdate_format))
+        :gsub("{{year}}", os.date("%Y"))
+        :gsub("{{week}}", os.date("%V"))
+
     return final_content
 end
 
