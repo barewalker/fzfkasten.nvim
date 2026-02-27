@@ -13,3 +13,6 @@ cmd("FzfKastenFollowLink", function() require('fzfkasten').follow_link() end, { 
 cmd("FzfKastenShowBacklinks", function() require('fzfkasten').show_backlinks() end, { desc = "Fzfkasten: Show Backlinks" })
 cmd("FzfKastenFindDailyNotes", function() require('fzfkasten').find_daily_notes() end, { desc = "Fzfkasten: Find Daily Notes" })
 cmd("FzfKastenFindWeeklyNotes", function() require('fzfkasten').find_weekly_notes() end, { desc = "Fzfkasten: Find Weekly Notes" })
+cmd("FzfKastenClaudeSendBuffer", function() require('fzfkasten').claude_send_buffer() end, { desc = "Fzfkasten: Send note to Claude" })
+cmd("FzfKastenClaudeSendSelection", function() require('fzfkasten').claude_send_selection() end, { range = true, desc = "Fzfkasten: Send selection to Claude" })
+cmd("FzfKastenClaudeToggle", function() require('fzfkasten').claude_toggle() end, { desc = "Fzfkasten: Toggle Claude terminal" })

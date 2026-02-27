@@ -14,4 +14,7 @@ M.show_backlinks = function() require('fzfkasten.pickers').show_backlinks(vim.ap
 M.rename_note = function() require('fzfkasten.core').rename_note_interactively() end
 M.find_daily_notes = function() require('fzfkasten.pickers').find_daily_notes_picker() end
 M.find_weekly_notes = function() require('fzfkasten.pickers').find_weekly_notes_picker() end
+M.claude_send_buffer = function() require('fzfkasten.claude').send_current_buffer() end
+M.claude_send_selection = function() require('fzfkasten.claude').send_selection() end
+M.claude_toggle = function() require('fzfkasten.claude').toggle_terminal() end
 return M

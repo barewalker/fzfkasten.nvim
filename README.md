@@ -28,6 +28,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **New Templated Notes**: Create new notes from predefined templates with interactive selection.
 - [x] **Find Daily Notes**: Interactively find and open existing daily notes.
 - [x] **Find Weekly Notes**: Interactively find and open existing weekly notes.
+- [x] **Claude Code Integration**: Optional integration with `claudecode.nvim` to send notes/selections to Claude (disabled by default).
 
 ### Pending / Under Development
 - [ ] Improved link aliasing support (`[[note|alias]]`) for follow link.
@@ -85,6 +86,9 @@ Here is the default configuration. You can override any of these settings in the
       return title
     end,
   },
+  claude = {
+    enabled = false, -- set to true to enable Claude Code integration
+  },
   fzf = {
     winopts = {
       height = 0.85,
@@ -111,6 +115,39 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
 *   **`:FzfKastenSearchByTag`**: First presents a list of all unique tags in your Zettelkasten, then displays notes containing the selected tag.
 
 *   **Other existing commands:** (e.g., `:FzfKastenDaily`, `:FzfKastenWeekly`, `:FzfKastenFindNotes`, `:FzfKastenTags`, `:FzfKastenInsert`, etc.)
+
+## Claude Code Integration
+
+Fzfkasten provides optional integration with [claudecode.nvim](https://github.com/coder/claudecode.nvim) to send notes or selections to Claude Code directly from your editor.
+
+### Setup
+
+1. Install `coder/claudecode.nvim` as an additional dependency.
+2. Enable the integration in your setup:
+
+```lua
+require("fzfkasten").setup({
+  claude = {
+    enabled = true,
+  },
+})
+```
+
+### Commands
+
+*   **`:FzfKastenClaudeSendBuffer`**: Send the entire current note to Claude as an `@mention`.
+*   **`:FzfKastenClaudeSendSelection`**: Send the visual selection to Claude.
+*   **`:FzfKastenClaudeToggle`**: Toggle the Claude terminal.
+
+### Example Keymaps
+
+```lua
+{ "<leader>kc", "<cmd>FzfKastenClaudeSendBuffer<CR>", desc = "Send note to Claude" },
+{ "<leader>kc", "<cmd>FzfKastenClaudeSendSelection<CR>", mode = "v", desc = "Send selection to Claude" },
+{ "<leader>kC", "<cmd>FzfKastenClaudeToggle<CR>", desc = "Toggle Claude terminal" },
+```
+
+If `claudecode.nvim` is not installed or `claude.enabled` is `false`, the commands will show a warning and do nothing — fzfkasten continues to work normally.
 
 ## Google Calendar Integration
 

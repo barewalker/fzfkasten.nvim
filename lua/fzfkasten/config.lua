@@ -33,6 +33,9 @@ M.defaults = {
    return title
   end,
  },
+ claude = {
+  enabled = false,
+ },
  fzf = {
   winopts = {
    height = 0.85,
