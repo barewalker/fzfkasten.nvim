@@ -81,7 +81,13 @@ function M.create_new_note_interactively()
             template_to_use = config.options.new_note_template
         end
 
-        local sanitized_title = config.options.transform.new_file_name(title):gsub("[^%w%s_%.%-]+", "") -- Sanitization allowing spaces
+        local sanitized_title = config.options.transform.sanitize_filename(
+            config.options.transform.new_file_name(title)
+        )
+        if sanitized_title == "" then
+            vim.notify("Sanitized note title is empty; aborting.", vim.log.levels.ERROR)
+            return
+        end
         local filename = sanitized_title .. "." .. config.options.extension
         local full_path = utils.join_path(config.options.home, filename)
 
@@ -105,7 +111,13 @@ end
 function M.rename_note(old_path, new_name_raw)
     local old_name = vim.fn.fnamemodify(old_path, ":t:r")
     local extension = vim.fn.fnamemodify(old_path, ":e")
-    local new_name = config.options.transform.new_file_name(new_name_raw):gsub("[^%w%s_%.%-]+", "")
+    local new_name = config.options.transform.sanitize_filename(
+        config.options.transform.new_file_name(new_name_raw)
+    )
+    if new_name == "" then
+        vim.notify("Sanitized new name is empty; aborting rename.", vim.log.levels.ERROR)
+        return
+    end
     local new_filename = new_name .. "." .. extension
     local old_dir = vim.fn.fnamemodify(old_path, ":h")
     local new_path = utils.join_path(old_dir, new_filename)

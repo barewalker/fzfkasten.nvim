@@ -32,6 +32,19 @@ M.defaults = {
   new_file_name = function(title)
    return title
   end,
+  -- Sanitize a title into a filesystem-safe filename (without extension).
+  -- Default: strip characters unsafe on common filesystems, trim whitespace,
+  -- collapse internal whitespace, and remove leading/trailing dots.
+  -- Preserves unicode (CJK, emoji, accented characters, etc.) by design —
+  -- override this if you want ASCII-only names or slug-style kebab-case.
+  sanitize_filename = function(title)
+   local s = title or ""
+   s = s:gsub('[/\\:*?"<>|%c]', "")
+   s = s:gsub("^%s+", ""):gsub("%s+$", "")
+   s = s:gsub("%s+", " ")
+   s = s:gsub("^%.+", ""):gsub("%.+$", "")
+   return s
+  end,
  },
  claude = {
   enabled = false,
