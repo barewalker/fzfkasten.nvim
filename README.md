@@ -32,9 +32,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **Link Aliasing**: `[[note|alias]]` syntax is supported across follow link, backlinks, and rename.
 - [x] **Filename Sanitization**: Unicode-safe default (preserves CJK) with a user-overridable `transform.sanitize_filename` hook.
 - [x] **Template Placeholders**: Built-in `{{title}} {{date}} {{hdate}} {{year}} {{month}} {{day}} {{week}} {{time}}` plus user-defined entries via `template_placeholders` (string or function values).
-
-### Pending / Under Development
-- [ ] Enhanced image preview integration.
+- [x] **Image Preview**: Delegated to `fzf-lua`'s previewer; see the [Image Preview](#image-preview) section for configuration.
 
 ## Installation
 
@@ -185,7 +183,28 @@ This will append the output of `gcalcli agenda --tsv` to your new daily notes.
 
 ## Image Preview
 
-Image preview in the note finder (`find_notes`) depends on your `fzf-lua` configuration. To enable image previews, you need to have a compatible terminal and an image previewer program installed. Please refer to the `fzf-lua` documentation for more details on how to set up image previews.
+Image rendering in the note finder (`find_notes`) is delegated to `fzf-lua`, so any previewer it supports works here — fzfkasten just passes `fzf.files` through to it. Point `fzf.files.previewer` at your chosen backend:
+
+```lua
+require("fzfkasten").setup({
+  fzf = {
+    files = {
+      -- "builtin" uses fzf-lua's native previewer (text + basic image support
+      -- in terminals that can render images inline, e.g. Kitty, WezTerm).
+      -- Swap for a custom previewer like "bat", or a user-defined one that
+      -- shells out to `chafa`, `viu`, or `ueberzug` for richer image preview.
+      previewer = "builtin",
+    },
+  },
+})
+```
+
+**Requirements for inline image preview:**
+
+- A terminal that can render images (Kitty, WezTerm, Ghostty, iTerm2, or any terminal with `ueberzug`/`chafa`).
+- `fzf-lua`'s image-preview config set up — see [fzf-lua's previewer docs](https://github.com/ibhagwan/fzf-lua#previewers) for defining custom previewers.
+
+Plain-text preview (Markdown syntax highlighting) works out of the box with `previewer = "builtin"` and requires no extra setup.
 
 ## License
 
