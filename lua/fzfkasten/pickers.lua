@@ -271,29 +271,38 @@ end
 
 function M.follow_link()
     local current_buffer_content = vim.api.nvim_buf_get_lines(0, 0, -1, false)
-    local links = {}
-    local link_pattern = config.options.link or "%[%[(.-)%]%]" -- Use config.options.link if available, otherwise fallback
+    local link_pattern = config.options.patterns.link
 
+    -- display -> target map, preserving insertion order
+    local entries = {}
+    local seen = {}
     for _, line in ipairs(current_buffer_content) do
-        -- Use gmatch with the link pattern to find all links in the line
         for link_text in string.gmatch(line, link_pattern) do
             if link_text ~= "" then
-                table.insert(links, link_text)
+                local target, alias = link_text:match("^(.-)|(.*)$")
+                target = target or link_text
+                local display = alias and string.format("%s  →  %s", alias, target) or target
+                if not seen[display] then
+                    seen[display] = target
+                    table.insert(entries, display)
+                end
             end
         end
     end
 
-    if #links == 0 then
+    if #entries == 0 then
         vim.notify("No links found in current buffer.", vim.log.levels.INFO)
         return
     end
 
-    fzf.fzf_exec(links, vim.tbl_deep_extend("force", config.options.fzf, {
+    fzf.fzf_exec(entries, vim.tbl_deep_extend("force", config.options.fzf, {
         prompt = "Follow Link> ",
         actions = {
             ['default'] = function(selected_link)
                 if not selected_link or #selected_link == 0 then return end
-                local target_file = utils.join_path(config.options.home, selected_link[1] .. "." .. config.options.extension)
+                local target = seen[selected_link[1]]
+                if not target then return end
+                local target_file = utils.join_path(config.options.home, target .. "." .. config.options.extension)
                 if vim.fn.filereadable(target_file) == 1 then
                     vim.cmd("edit " .. vim.fn.fnameescape(target_file))
                 else
