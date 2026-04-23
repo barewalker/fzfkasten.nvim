@@ -30,9 +30,9 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **Find Weekly Notes**: Interactively find and open existing weekly notes.
 - [x] **Claude Code Integration**: Optional integration with `claudecode.nvim` to send notes/selections to Claude (disabled by default).
 - [x] **Link Aliasing**: `[[note|alias]]` syntax is supported across follow link, backlinks, and rename.
+- [x] **Filename Sanitization**: Unicode-safe default (preserves CJK) with a user-overridable `transform.sanitize_filename` hook.
 
 ### Pending / Under Development
-- [ ] Better sanitization and customization for file naming.
 - [ ] Expanded template placeholders and logic.
 - [ ] Enhanced image preview integration.
 
@@ -84,6 +84,18 @@ Here is the default configuration. You can override any of these settings in the
     end,
     new_file_name = function(title)
       return title
+    end,
+    -- Strips filesystem-unsafe characters (/\:*?"<>| and controls),
+    -- trims and collapses whitespace, and removes leading/trailing dots.
+    -- Unicode (CJK, emoji, accented) is preserved; override for ASCII-only
+    -- or slug-style names.
+    sanitize_filename = function(title)
+      local s = title or ""
+      s = s:gsub('[/\\:*?"<>|%c]', "")
+      s = s:gsub("^%s+", ""):gsub("%s+$", "")
+      s = s:gsub("%s+", " ")
+      s = s:gsub("^%.+", ""):gsub("%.+$", "")
+      return s
     end,
   },
   claude = {
