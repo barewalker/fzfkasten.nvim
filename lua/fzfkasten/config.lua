@@ -46,6 +46,11 @@ M.defaults = {
    return s
   end,
  },
+ -- Extra template placeholders merged with the built-ins (title, date,
+ -- hdate, year, month, day, week, time). Values may be strings or
+ -- functions; functions receive the current note title and must return
+ -- a string. User-supplied keys override built-ins of the same name.
+ template_placeholders = {},
  claude = {
   enabled = false,
  },
