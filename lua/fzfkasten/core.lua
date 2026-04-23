@@ -57,13 +57,38 @@ function M.load_template(rel_path, title)
     end
     local data = table.concat(vim.fn.readfile(abs_path), "\n")
 
-    -- Replace template variables
-    local final_content = data
-        :gsub("{{title}}", title)
-        :gsub("{{date}}", os.date("%Y-%m-%d"))
-        :gsub("{{hdate}}", os.date(config.options.hdate_format))
-        :gsub("{{year}}", os.date("%Y"))
-        :gsub("{{week}}", os.date("%V"))
+    local placeholders = {
+        title = title,
+        date = os.date("%Y-%m-%d"),
+        hdate = os.date(config.options.hdate_format),
+        year = os.date("%Y"),
+        month = os.date("%m"),
+        day = os.date("%d"),
+        week = os.date("%V"),
+        time = os.date("%H:%M"),
+    }
+    for k, v in pairs(config.options.template_placeholders or {}) do
+        placeholders[k] = v
+    end
+
+    local final_content = data:gsub("{{(.-)}}", function(key)
+        local v = placeholders[key]
+        if v == nil then
+            return nil -- leave "{{key}}" intact for unknown placeholders
+        end
+        if type(v) == "function" then
+            local ok, result = pcall(v, title)
+            if not ok then
+                vim.notify(
+                    string.format("[Fzfkasten] placeholder {{%s}} raised: %s", key, tostring(result)),
+                    vim.log.levels.WARN
+                )
+                return nil
+            end
+            v = result
+        end
+        return tostring(v)
+    end)
 
     return final_content
 end

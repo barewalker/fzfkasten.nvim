@@ -31,9 +31,9 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **Claude Code Integration**: Optional integration with `claudecode.nvim` to send notes/selections to Claude (disabled by default).
 - [x] **Link Aliasing**: `[[note|alias]]` syntax is supported across follow link, backlinks, and rename.
 - [x] **Filename Sanitization**: Unicode-safe default (preserves CJK) with a user-overridable `transform.sanitize_filename` hook.
+- [x] **Template Placeholders**: Built-in `{{title}} {{date}} {{hdate}} {{year}} {{month}} {{day}} {{week}} {{time}}` plus user-defined entries via `template_placeholders` (string or function values).
 
 ### Pending / Under Development
-- [ ] Expanded template placeholders and logic.
 - [ ] Enhanced image preview integration.
 
 ## Installation
@@ -97,6 +97,12 @@ Here is the default configuration. You can override any of these settings in the
       s = s:gsub("^%.+", ""):gsub("%.+$", "")
       return s
     end,
+  },
+  -- Extra placeholders merged on top of the built-ins. Values may be
+  -- strings or functions receiving the note title.
+  template_placeholders = {
+    -- author = "barewalker",
+    -- uuid = function() return vim.fn.system("uuidgen"):gsub("%s+$", "") end,
   },
   claude = {
     enabled = false, -- set to true to enable Claude Code integration
