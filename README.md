@@ -42,7 +42,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 
 ```lua
 {
-  "m2takeuchi/fzfkasten.nvim",
+  "barewalker/fzfkasten.nvim",
   dependencies = { "ibhagwan/fzf-lua" },
   config = function()
     require("fzfkasten").setup({
