@@ -11,7 +11,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 
 ## Plugin Status
 
-**Note: This plugin is currently under construction.** While the core features are functional, some advanced behaviors are still being refined.
+**Status: Beta.** All planned features are implemented and in daily use, but the API may still shift based on feedback and edge cases encountered in real-world usage.
 
 ### Implemented Features
 - [x] **Find Notes**: Fast note searching using `fzf-lua` with robust icon handling.
