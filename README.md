@@ -29,9 +29,9 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **Find Daily Notes**: Interactively find and open existing daily notes.
 - [x] **Find Weekly Notes**: Interactively find and open existing weekly notes.
 - [x] **Claude Code Integration**: Optional integration with `claudecode.nvim` to send notes/selections to Claude (disabled by default).
+- [x] **Link Aliasing**: `[[note|alias]]` syntax is supported across follow link, backlinks, and rename.
 
 ### Pending / Under Development
-- [ ] Improved link aliasing support (`[[note|alias]]`) for follow link.
 - [ ] Better sanitization and customization for file naming.
 - [ ] Expanded template placeholders and logic.
 - [ ] Enhanced image preview integration.
