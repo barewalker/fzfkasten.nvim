@@ -11,9 +11,10 @@ local function get_external_content(cmd)
     return result
 end
 
-function M.open_note(note_type)
+function M.open_note(note_type, time)
+    time = time or os.time()
     local opts = config.options.notes[note_type]
-    local date_str = os.date(opts.format)
+    local date_str = os.date(opts.format, time)
     local filename = config.options.transform.new_file_name(date_str) .. "." .. config.options.extension
     local target_dir = utils.join_path(config.options.home, opts.dir)
     local full_path = utils.join_path(target_dir, filename)
@@ -26,15 +27,15 @@ function M.open_note(note_type)
     vim.cmd("edit " .. vim.fn.fnameescape(full_path))
 
     if is_new then
-        M.apply_note_template(note_type, date_str)
+        M.apply_note_template(note_type, date_str, time)
     end
 end
 
-function M.apply_note_template(note_type, title)
+function M.apply_note_template(note_type, title, time)
     local opts = config.options.notes[note_type]
     local content = ""
     if opts.template then
-        content = M.load_template(opts.template, title)
+        content = M.load_template(opts.template, title, time)
     end
     if opts.use_external_cmd and opts.external_cmd then
         content = content .. "\n## External Data\n" .. get_external_content(opts.external_cmd)
@@ -47,7 +48,8 @@ function M.apply_note_template(note_type, title)
     end
 end
 
-function M.load_template(rel_path, title)
+function M.load_template(rel_path, title, time)
+    time = time or os.time()
     -- Gracefully handle cases where rel_path might already include "templates/"
     local clean_rel_path = rel_path:gsub("^templates/", "")
     local abs_path = utils.join_path(config.options.home, "templates", clean_rel_path)
@@ -59,13 +61,13 @@ function M.load_template(rel_path, title)
 
     local placeholders = {
         title = title,
-        date = os.date("%Y-%m-%d"),
-        hdate = os.date(config.options.hdate_format),
-        year = os.date("%Y"),
-        month = os.date("%m"),
-        day = os.date("%d"),
-        week = os.date("%V"),
-        time = os.date("%H:%M"),
+        date = os.date("%Y-%m-%d", time),
+        hdate = os.date(config.options.hdate_format, time),
+        year = os.date("%Y", time),
+        month = os.date("%m", time),
+        day = os.date("%d", time),
+        week = os.date("%V", time),
+        time = os.date("%H:%M", time),
     }
     for k, v in pairs(config.options.template_placeholders or {}) do
         placeholders[k] = v

@@ -13,6 +13,7 @@ M.follow_link = function() require('fzfkasten.pickers').follow_link() end
 M.show_backlinks = function() require('fzfkasten.pickers').show_backlinks(vim.api.nvim_buf_get_name(0)) end
 M.rename_note = function() require('fzfkasten.core').rename_note_interactively() end
 M.find_daily_notes = function() require('fzfkasten.pickers').find_daily_notes_picker() end
+M.pick_daily_date = function() require('fzfkasten.pickers').pick_daily_date() end
 M.find_weekly_notes = function() require('fzfkasten.pickers').find_weekly_notes_picker() end
 M.claude_send_buffer = function() require('fzfkasten.claude').send_current_buffer() end
 M.claude_send_selection = function() require('fzfkasten.claude').send_selection() end
