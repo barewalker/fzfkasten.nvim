@@ -361,6 +361,67 @@ function M.find_daily_notes_picker()
     }, config.options.notes.daily.fzf_opts or {}))
 end
 
+local function prompt_manual_date_and_open()
+    local input = vim.fn.input("Daily note date (YYYY-MM-DD): ")
+    if not input or input:gsub("%s+", "") == "" then return end
+    local y, mo, d = input:match("^(%d%d%d%d)-(%d%d)-(%d%d)$")
+    if not y then
+        vim.notify("Invalid date. Expected YYYY-MM-DD.", vim.log.levels.ERROR)
+        return
+    end
+    local t = os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d), hour = 12 })
+    if not t then
+        vim.notify("Could not parse date.", vim.log.levels.ERROR)
+        return
+    end
+    if t > os.time() then
+        vim.notify("Future dates are not allowed.", vim.log.levels.ERROR)
+        return
+    end
+    require('fzfkasten.core').open_note("daily", t)
+end
+
+function M.pick_daily_date()
+    local opts = config.options.notes.daily
+    local lookback = opts.lookback_days or 30
+    local daily_dir = utils.join_path(config.options.home, opts.dir)
+    local now = os.time()
+
+    local entries = {}
+    local entry_to_time = {}
+    for i = 0, lookback - 1 do
+        local t = now - i * 86400
+        local label = os.date("%Y-%m-%d (%a)", t)
+        local filename_date = os.date(opts.format, t)
+        local filename = config.options.transform.new_file_name(filename_date) .. "." .. config.options.extension
+        local full_path = utils.join_path(daily_dir, filename)
+        local exists = vim.fn.filereadable(full_path) == 1
+        local display = (exists and "✓ " or "  ") .. label
+        table.insert(entries, display)
+        entry_to_time[display] = t
+    end
+
+    fzf.fzf_exec(entries, vim.tbl_deep_extend("force", config.options.fzf, {
+        prompt = "Daily Date> ",
+        fzf_opts = {
+            ["--header"] = "<ctrl-x> enter date manually",
+            ["--no-sort"] = "",
+        },
+        actions = {
+            ['default'] = function(selected)
+                if not selected or #selected == 0 then return end
+                local t = entry_to_time[selected[1]]
+                if t then
+                    require('fzfkasten.core').open_note("daily", t)
+                end
+            end,
+            ['ctrl-x'] = function()
+                vim.schedule(prompt_manual_date_and_open)
+            end,
+        }
+    }, opts.fzf_opts or {}))
+end
+
 function M.find_weekly_notes_picker()
     local weekly_dir = utils.join_path(config.options.home, config.options.notes.weekly.dir)
     fzf.files(vim.tbl_deep_extend("force", config.options.fzf.files, {

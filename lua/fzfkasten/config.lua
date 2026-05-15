@@ -17,6 +17,8 @@ M.defaults = {
    use_external_cmd = false,
    external_cmd = "gcalcli agenda --tsv",
    fzf_opts = {},
+   -- How many days back the date picker should offer (used by pick_daily_date).
+   lookback_days = 30,
   },
   weekly = {
    dir = "weekly",
