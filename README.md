@@ -102,6 +102,13 @@ Here is the default configuration. You can override any of these settings in the
     -- author = "barewalker",
     -- uuid = function() return vim.fn.system("uuidgen"):gsub("%s+$", "") end,
   },
+  -- Tweaks applied to note buffers that fzfkasten itself opens (pickers,
+  -- daily/weekly, follow-link, new note, etc.). See "Note buffer behaviour".
+  note_buffer = {
+    disable_diagnostics = true, -- turn off vim.diagnostic for the buffer
+    disable_format = true,      -- set disable_autoformat / autoformat / format_on_save
+    on_open = nil,              -- optional function(bufnr) for extra tweaks
+  },
   claude = {
     enabled = false, -- set to true to enable Claude Code integration
   },
@@ -116,6 +123,58 @@ Here is the default configuration. You can override any of these settings in the
     },
   },
 }
+```
+
+## Note buffer behaviour
+
+LSP diagnostics and autoformat are often noisy on prose. Every note buffer that
+fzfkasten **itself** opens (via the pickers, daily/weekly notes, follow-link,
+new note, rename, …) is therefore set up so that, by default:
+
+- **diagnostics are disabled** for that buffer (`vim.diagnostic.enable(false, …)`), and
+- **autoformat is disabled** — fzfkasten sets `vim.b.disable_autoformat = true`
+  (honoured by [conform.nvim](https://github.com/stevearc/conform.nvim)) plus the
+  generic `vim.b.autoformat` / `vim.b.format_on_save` flags.
+
+This only affects buffers opened *through* fzfkasten — notes you open by other
+means (`:edit`, netrw, another picker) are left untouched.
+
+Turn either off in `setup`:
+
+```lua
+require("fzfkasten").setup({
+  note_buffer = {
+    disable_diagnostics = false, -- keep diagnostics on
+    disable_format = false,      -- keep autoformat on
+  },
+})
+```
+
+### Custom format/diagnostic setups
+
+Every fzfkasten-opened note buffer also gets a marker, `vim.b.fzfkasten = true`,
+regardless of the flags above. If your format-on-save is a bespoke
+`BufWritePre` autocmd (e.g. calling `vim.lsp.buf.format()` directly), gate it on
+that marker:
+
+```lua
+vim.api.nvim_create_autocmd("BufWritePre", {
+  callback = function(args)
+    if vim.b[args.buf].fzfkasten then return end -- skip fzfkasten notes
+    vim.lsp.buf.format()
+  end,
+})
+```
+
+For anything more involved, use the `on_open` hook, which receives the buffer
+number after it has been marked:
+
+```lua
+note_buffer = {
+  on_open = function(bufnr)
+    vim.bo[bufnr].spell = true
+  end,
+},
 ```
 
 ## Usage

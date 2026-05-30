@@ -62,6 +62,19 @@ M.defaults = {
  -- functions; functions receive the current note title and must return
  -- a string. User-supplied keys override built-ins of the same name.
  template_placeholders = {},
+ -- Tweaks applied to note buffers that fzfkasten itself opens. Every such
+ -- buffer gets `vim.b.fzfkasten = true` regardless of these flags, so you can
+ -- gate your own autocmds on it. The opt-outs below are on by default because
+ -- LSP diagnostics / autoformat tend to be noisy on prose notes.
+ note_buffer = {
+  -- Disable diagnostics for the buffer (vim.diagnostic.enable(false, ...)).
+  disable_diagnostics = true,
+  -- Set conform.nvim's `disable_autoformat` plus a few generic "format on
+  -- save" flags (autoformat, format_on_save) so common setups skip the buffer.
+  disable_format = true,
+  -- Optional extra hook: function(bufnr) called after marking the buffer.
+  on_open = nil,
+ },
  claude = {
   enabled = false,
  },

@@ -2,6 +2,7 @@ local M = {}
 local config = require('fzfkasten.config')
 local utils = require('fzfkasten.utils')
 local pickers = require('fzfkasten.pickers') -- Added for template selection
+local buffer = require('fzfkasten.buffer') -- Opens notes and applies per-buffer opt-outs
 
 local function get_external_content(cmd)
     local handle = io.popen(cmd)
@@ -24,7 +25,7 @@ function M.open_note(note_type, time)
     end
 
     local is_new = vim.fn.filereadable(full_path) == 0
-    vim.cmd("edit " .. vim.fn.fnameescape(full_path))
+    buffer.edit(full_path)
 
     if is_new then
         M.apply_note_template(note_type, date_str, time)
@@ -118,7 +119,7 @@ function M.create_new_note_interactively()
         local filename = sanitized_title .. "." .. config.options.extension
         local full_path = utils.join_path(config.options.home, filename)
 
-        vim.cmd("edit " .. vim.fn.fnameescape(full_path))
+        buffer.edit(full_path)
 
         local current_buf = vim.api.nvim_get_current_buf()
 
@@ -199,7 +200,7 @@ function M.rename_note(old_path, new_name_raw)
             vim.api.nvim_buf_delete(buf, { force = true })
         end
     end
-    vim.cmd("edit " .. vim.fn.fnameescape(new_path))
+    buffer.edit(new_path)
 
     vim.notify("Renamed '" .. old_name .. "' to '" .. new_name .. "' and updated links.", vim.log.levels.INFO)
 end
