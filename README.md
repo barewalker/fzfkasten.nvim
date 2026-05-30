@@ -19,7 +19,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **Daily/Weekly Notes**: Automatic creation from templates with configurable directories.
 - [x] **Tag Search**: Search for `#tags` across all notes.
 - [x] **Link Insertion**: Interactive link insertion with `[[` trigger.
-- [x] **Follow Link**: Jump to the note under the cursor.
+- [x] **Follow Link**: Jump to the link under the cursor (or pick from all links in the buffer). Resolves notes recursively across sub-directories, and can create missing notes from a template. Mappable to `gf` with a native-`gf` fallback.
 - [x] **Backlinks**: Find all notes linking to the current note.
 - [x] **Rename Note**: Rename a note and automatically update all internal links.
 - [x] **Template Engine**: Simple `{{title}}`, `{{date}}`, and `{{hdate}}` placeholders.
@@ -130,7 +130,29 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
 
 *   **`:FzfKastenSearchByTag`**: First presents a list of all unique tags in your Zettelkasten, then displays notes containing the selected tag.
 
+*   **`:FzfKastenFollowLink`**: Follow a `[[wikilink]]`. If the cursor is on a link, it opens that link directly; otherwise it lists every link in the buffer in an `fzf-lua` picker. Targets are resolved recursively across sub-directories (so links to notes in e.g. `lognote/` resolve too). When several notes share the name, you get a picker to choose; when none exist, the link is created from a template if `follow_link.create_nonexisting` is enabled (see below).
+
+*   **`:FzfKastenGotoLink`**: Like `:FzfKastenFollowLink` but cursor-only — follows the link under the cursor, and falls back to Vim's native `gf` when the cursor isn't on a link. Designed to be mapped to `gf` so the habit of pressing `gf` "just works":
+
+    ```lua
+    -- in a markdown ftplugin, or with an ft filter:
+    { "gf", "<cmd>FzfKastenGotoLink<CR>", ft = "markdown", desc = "Follow wikilink / gf" }
+    ```
+
 *   **Other existing commands:** (e.g., `:FzfKastenDaily`, `:FzfKastenWeekly`, `:FzfKastenFindNotes`, `:FzfKastenTags`, `:FzfKastenInsert`, etc.)
+
+### Following links to non-existing notes
+
+By default, following a link whose note doesn't exist anywhere under `home` just warns. To create it from a template instead (telekasten's `follow_creates_nonexisting` behaviour):
+
+```lua
+require("fzfkasten").setup({
+  follow_link = {
+    create_nonexisting = true,      -- create the note (in home root) when missing
+    new_note_template = nil,        -- template to use; falls back to `new_note_template`
+  },
+})
+```
 
 ## Claude Code Integration
 

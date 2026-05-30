@@ -10,6 +10,7 @@ M.search_content = function() require('fzfkasten.pickers').search_content() end
 M.new_note = function() require('fzfkasten.core').create_new_note_interactively() end
 M.panel = function() require('fzfkasten.pickers').panel() end
 M.follow_link = function() require('fzfkasten.pickers').follow_link() end
+M.goto_link = function() require('fzfkasten.pickers').goto_link() end
 M.show_backlinks = function() require('fzfkasten.pickers').show_backlinks(vim.api.nvim_buf_get_name(0)) end
 M.rename_note = function() require('fzfkasten.core').rename_note_interactively() end
 M.find_daily_notes = function() require('fzfkasten.pickers').find_daily_notes_picker() end
