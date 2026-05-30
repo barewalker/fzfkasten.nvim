@@ -10,6 +10,7 @@ cmd("FzfKastenNewNote", function() require('fzfkasten').new_note() end, { desc =
 cmd("FzfKastenRenameNote", function() require('fzfkasten').rename_note() end, { desc = "Fzfkasten: Rename current note and update links" })
 cmd("FzfKastenPanel", function() require('fzfkasten').panel() end, { desc = "Fzfkasten: Panel" })
 cmd("FzfKastenFollowLink", function() require('fzfkasten').follow_link() end, { desc = "Fzfkasten: Follow Link" })
+cmd("FzfKastenGotoLink", function() require('fzfkasten').goto_link() end, { desc = "Fzfkasten: Follow link under cursor (gf-style, falls back to native gf)" })
 cmd("FzfKastenShowBacklinks", function() require('fzfkasten').show_backlinks() end, { desc = "Fzfkasten: Show Backlinks" })
 cmd("FzfKastenFindDailyNotes", function() require('fzfkasten').find_daily_notes() end, { desc = "Fzfkasten: Find Daily Notes" })
 cmd("FzfKastenPickDailyDate", function() require('fzfkasten').pick_daily_date() end, { desc = "Fzfkasten: Pick a past date and open/create that daily note" })

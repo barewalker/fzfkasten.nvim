@@ -269,7 +269,93 @@ function M.panel()
     }))
 end
 
+-- Find note files whose name matches `name` anywhere under `home` (recursive),
+-- so links to notes in subdirectories (e.g. dailies) resolve too.
+local function resolve_note_files(name)
+    local pattern = utils.join_path(config.options.home, "**/*." .. config.options.extension)
+    local files = vim.fn.glob(pattern, true, true) or {}
+    local matches = {}
+    for _, f in ipairs(files) do
+        if vim.fn.fnamemodify(f, ":t:r") == name then
+            table.insert(matches, f)
+        end
+    end
+    return matches
+end
+
+-- Create a note for a non-existing link target, in the home root, from a
+-- template. Mirrors telekasten's follow_creates_nonexisting behaviour.
+local function create_note_for_link(name)
+    local fl = config.options.follow_link or {}
+    local full_path = utils.join_path(config.options.home, name .. "." .. config.options.extension)
+    vim.cmd("edit " .. vim.fn.fnameescape(full_path))
+
+    local core = require('fzfkasten.core')
+    local template = fl.new_note_template or config.options.new_note_template
+    local content = template and core.load_template(template, name) or ("# " .. name)
+
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    if #lines <= 1 and (lines[1] == nil or lines[1] == "") then
+        vim.api.nvim_buf_set_lines(0, 0, -1, false, vim.split(content, "\n"))
+    end
+    vim.bo.filetype = "markdown"
+end
+
+-- Open a link target (an inner "[[...]]" string, possibly "name|alias"):
+-- resolve recursively, pick via fzf on multiple matches, create when missing
+-- (if configured), otherwise warn.
+local function open_link_target(raw_target)
+    local name = raw_target:match("^(.-)|") or raw_target
+    if not name or name == "" then return end
+
+    local matches = resolve_note_files(name)
+    if #matches == 1 then
+        vim.cmd("edit " .. vim.fn.fnameescape(matches[1]))
+    elseif #matches > 1 then
+        fzf.fzf_exec(matches, vim.tbl_deep_extend("force", config.options.fzf, {
+            prompt = "Multiple matches for '" .. name .. "'> ",
+            actions = {
+                ['default'] = function(selected)
+                    if not selected or #selected == 0 then return end
+                    vim.cmd("edit " .. vim.fn.fnameescape(selected[1]))
+                end
+            }
+        }))
+    else
+        local fl = config.options.follow_link or {}
+        if fl.create_nonexisting then
+            create_note_for_link(name)
+        else
+            vim.notify("Note not found: " .. name, vim.log.levels.WARN)
+        end
+    end
+end
+
+-- Return the inner text of the "[[...]]" link under the cursor, or nil.
+local function link_under_cursor()
+    local line = vim.api.nvim_get_current_line()
+    local cursor_col = vim.api.nvim_win_get_cursor(0)[2] + 1 -- 1-indexed byte column
+    local init = 1
+    while true do
+        local s, e, inner = line:find("%[%[(.-)%]%]", init)
+        if not s then break end
+        if cursor_col >= s and cursor_col <= e then
+            return inner
+        end
+        init = e + 1
+    end
+    return nil
+end
+
 function M.follow_link()
+    -- Prefer the link under the cursor (telekasten-style direct follow).
+    local under = link_under_cursor()
+    if under and under ~= "" then
+        open_link_target(under)
+        return
+    end
+
+    -- Otherwise list every link in the buffer and let the user pick.
     local current_buffer_content = vim.api.nvim_buf_get_lines(0, 0, -1, false)
     local link_pattern = config.options.patterns.link
 
@@ -302,15 +388,24 @@ function M.follow_link()
                 if not selected_link or #selected_link == 0 then return end
                 local target = seen[selected_link[1]]
                 if not target then return end
-                local target_file = utils.join_path(config.options.home, target .. "." .. config.options.extension)
-                if vim.fn.filereadable(target_file) == 1 then
-                    vim.cmd("edit " .. vim.fn.fnameescape(target_file))
-                else
-                    vim.notify("Note not found: " .. target_file, vim.log.levels.ERROR)
-                end
+                open_link_target(target)
             end
         }
     }))
+end
+
+-- Intended to be mapped to `gf` in note buffers: follow the wikilink under the
+-- cursor, falling back to Vim's built-in `gf` when there is none.
+function M.goto_link()
+    local under = link_under_cursor()
+    if under and under ~= "" then
+        open_link_target(under)
+    else
+        local ok, err = pcall(vim.cmd, "normal! gf")
+        if not ok then
+            vim.notify(tostring(err), vim.log.levels.WARN)
+        end
+    end
 end
 
 function M.select_template(callback)

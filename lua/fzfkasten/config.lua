@@ -6,6 +6,15 @@ M.defaults = {
  extension = "md",
  hdate_format = "%B %d, %Y",
  new_note_template = nil,
+ -- Behaviour of follow_link / goto_link when following [[wikilinks]].
+ follow_link = {
+   -- When the link target doesn't exist anywhere under `home`, create it
+   -- (in the home root) from a template instead of just warning.
+   create_nonexisting = false,
+   -- Template used when creating a non-existing note. Falls back to
+   -- `new_note_template` when nil.
+   new_note_template = nil,
+ },
    patterns = {
      tag = [[#([%w_-]+)]],
      link = [=[%[%[(.-)%]%]]=],
