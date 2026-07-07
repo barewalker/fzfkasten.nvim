@@ -132,7 +132,7 @@ function M.create_new_note_interactively()
 
         vim.api.nvim_buf_set_lines(current_buf, 0, -1, false, {})
         vim.api.nvim_buf_set_lines(current_buf, 0, 0, false, vim.split(content, "\n"))
-        vim.bo[current_buf].filetype = "markdown"
+        -- filetype is set centrally in buffer.edit (called above).
     end)
 end
 
