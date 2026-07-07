@@ -48,7 +48,16 @@ end
 -- code path gets the same treatment.
 function M.edit(path)
     vim.cmd("edit " .. vim.fn.fnameescape(path))
-    M.mark(vim.api.nvim_get_current_buf())
+    local bufnr = vim.api.nvim_get_current_buf()
+    -- Some entry points (e.g. opening from an fzf-lua action callback, or a
+    -- brand-new empty note) land here before Neovim's automatic filetype
+    -- detection has settled, leaving the buffer with no filetype. Ensure notes
+    -- always get one so syntax/ftplugins apply. Prefer detection by filename,
+    -- falling back to markdown -- this plugin's native note format.
+    if vim.bo[bufnr].filetype == "" then
+        vim.bo[bufnr].filetype = vim.filetype.match({ filename = path }) or "markdown"
+    end
+    M.mark(bufnr)
 end
 
 return M
