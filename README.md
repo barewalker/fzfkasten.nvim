@@ -280,14 +280,43 @@ tasks = {
   date_keys = { "date", "created" },  -- frontmatter keys holding a note's date
   date = nil,  -- function(path, lines, frontmatter) -> "YYYY-MM-DD"|nil
   patterns = {
+    -- A ripgrep regex (not a Lua pattern), see "Redefining the syntax" below.
+    scan = [[^\s*[-*]\s+\[[ xX]\]\s+]],
     open = "^%s*[-*]%s+%[ %]%s+(.+)$",
     done = "^%s*[-*]%s+%[[xX]%]%s+(.+)$",
+    toggle = "^(%s*[-*]%s+%[)([ xX])(%])",  -- captures (before)(mark)(after)
     priority = "^%((%u)%)%s+",
     due = "due:(%d%d%d%d%-%d%d%-%d%d)",
   },
+  marks = { open = " ", done = "x" },  -- what `toggle` writes into the mark
   on_collect = nil,  -- function(tasks) called after each collect
 }
 ```
+
+### Redefining the syntax
+
+`patterns` and `marks` between them define what a task looks like, and all of it is yours to change. Three of the patterns work together and have to agree:
+
+- `scan` finds which notes are worth reading. It is a **ripgrep regex**, not a Lua pattern — the two are different languages, so it can't be derived from `open`/`done` for you. Keep it a superset of both, or set it to `false` to skip the pre-filter and read every note (slower, but it can't disagree with anything).
+- `open` and `done` decide what each line is, and capture the task's text.
+- `toggle` captures `(before)(mark)(after)` around the mark, and `marks` says what to write into it.
+
+Taken together, they let you use a different notation end to end:
+
+```lua
+tasks = {
+  patterns = {
+    scan = [[^\s*[-*]\s+\([ xX]\)\s+]],      -- ripgrep regex
+    open = "^%s*[-*]%s+%( %)%s+(.+)$",       -- - ( ) buy milk
+    done = "^%s*[-*]%s+%([xX]%)%s+(.+)$",    -- - (x) buy milk
+    toggle = "^(%s*[-*]%s+%()([ xX])(%))",
+    priority = "^%[(%u)%]%s+",               -- - ( ) [A] buy milk
+    due = "due:(%d%d%d%d%-%d%d%-%d%d)",
+  },
+}
+```
+
+Note `scan = false` rather than `nil`: `setup()` merges your table over the defaults, so a `nil` leaves the default in place. The same applies to any other option you want to switch off.
 
 `since_days` earns its keep once your notes are a few years deep: old notes carry tasks you'll never revisit, and they drown the ones you will. Pair it with `always` for a standing list that shouldn't age out:
 

@@ -72,11 +72,23 @@ M.defaults = {
   -- e.g. a standing task list that isn't tied to any date.
   always = {},
   patterns = {
+   -- A ripgrep regex (NOT a Lua pattern) narrowing which notes are read at
+   -- all. It cannot be derived from `open`/`done` below -- different regex
+   -- languages -- so redefine it alongside them, keeping it a superset of
+   -- both. Set to `false` to skip the pre-filter and read every note: slower
+   -- on large collections, but always agrees with `open`/`done`.
+   -- (`false`, not `nil`: setup() merges over the defaults, so a nil here
+   -- just leaves this default in place.)
+   scan = [[^\s*[-*]\s+\[[ xX]\]\s+]],
    open = "^%s*[-*]%s+%[ %]%s+(.+)$",
    done = "^%s*[-*]%s+%[[xX]%]%s+(.+)$",
+   -- Captures (before)(mark)(after) around a checkbox's mark, for toggling.
+   toggle = "^(%s*[-*]%s+%[)([ xX])(%])",
    priority = "^%((%u)%)%s+",
    due = "due:(%d%d%d%d%-%d%d%-%d%d)",
   },
+  -- What the `toggle` pattern's mark capture is replaced with.
+  marks = { open = " ", done = "x" },
   -- function(tasks) called after each collect. Hook for exporting elsewhere
   -- (an aggregated index note, todo.txt, an external tracker, ...).
   on_collect = nil,
