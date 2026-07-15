@@ -18,18 +18,36 @@ local DAY = 86400
 -- A broken `tasks.date` hook would otherwise warn once per note scanned.
 local date_hook_warned = false
 
+-- Every note under `home`. Used when `patterns.scan` is nil.
+local function all_notes()
+    local glob = utils.join_path(config.options.home, "**/*." .. config.options.extension)
+    return vim.fn.glob(glob, true, true) or {}
+end
+
 -- Files worth reading at all: only those containing a checkbox. Everything
 -- else (frontmatter opt-out, heading scope, note date) needs line context, so
 -- it is decided in Lua on this much smaller set.
-local function files_with_checkboxes()
+--
+-- `patterns.scan` is a ripgrep regex, not a Lua pattern, so it cannot be
+-- derived from `patterns.open`/`done` -- the two are different languages.
+-- Setting it to `false` skips the pre-filter and reads every note instead.
+local function candidate_notes()
+    local scan = config.options.tasks.patterns.scan
+    if not scan then
+        return all_notes()
+    end
     if vim.fn.executable("rg") == 0 then
-        vim.notify("[Fzfkasten] 'rg' (ripgrep) is required for tasks.", vim.log.levels.ERROR)
-        return {}
+        vim.notify(
+            "[Fzfkasten] 'rg' (ripgrep) not found; reading every note. "
+            .. "Set tasks.patterns.scan = false to silence this.",
+            vim.log.levels.WARN
+        )
+        return all_notes()
     end
     local out = vim.fn.systemlist({
         "rg", "--files-with-matches", "--no-messages",
         "--glob", "*." .. config.options.extension,
-        "-e", [[^\s*[-*]\s+\[[ xX]\]\s+]],
+        "-e", scan,
         config.options.home,
     })
     -- rg exits 1 when nothing matches; that is not an error for us.
@@ -149,6 +167,20 @@ local function parse_task_text(text, pats)
     return vim.trim(text), priority, due
 end
 
+-- Flip a checkbox line, or nil when the line holds no checkbox. Driven by
+-- `patterns.toggle` (captures before/mark/after) and `marks`, so a user who
+-- redefines the checkbox syntax keeps toggling.
+local function toggle_line(line)
+    local o = config.options.tasks
+    local toggled, n = line:gsub(o.patterns.toggle, function(before, mark, after)
+        return before .. (mark == o.marks.open and o.marks.done or o.marks.open) .. after
+    end, 1)
+    if n == 0 then
+        return nil
+    end
+    return toggled
+end
+
 local function sort_tasks(tasks)
     table.sort(tasks, function(a, b)
         -- Prioritised first, then most urgent, then stable by location.
@@ -185,7 +217,7 @@ function M.collect(opts)
 
     date_hook_warned = false
     local tasks = {}
-    for _, path in ipairs(files_with_checkboxes()) do
+    for _, path in ipairs(candidate_notes()) do
         local rel = path:sub(#home + 2)
         if not in_ignored_dir(rel) then
             local ok, lines = pcall(vim.fn.readfile, path)
@@ -284,10 +316,8 @@ function M.toggle_at(path, lineno)
         return false
     end
 
-    local toggled = line:gsub("^(%s*[-*]%s+%[)([ xX])(%])", function(head, mark, tail)
-        return head .. (mark == " " and "x" or " ") .. tail
-    end, 1)
-    if toggled == line then
+    local toggled = toggle_line(line)
+    if not toggled then
         vim.notify("[Fzfkasten] No checkbox on that line.", vim.log.levels.WARN)
         return false
     end
@@ -303,11 +333,8 @@ end
 --- Toggle the checkbox on the current line of the current buffer.
 function M.toggle()
     local lineno = vim.api.nvim_win_get_cursor(0)[1]
-    local line = vim.api.nvim_get_current_line()
-    local toggled = line:gsub("^(%s*[-*]%s+%[)([ xX])(%])", function(head, mark, tail)
-        return head .. (mark == " " and "x" or " ") .. tail
-    end, 1)
-    if toggled == line then
+    local toggled = toggle_line(vim.api.nvim_get_current_line())
+    if not toggled then
         vim.notify("[Fzfkasten] No checkbox on this line.", vim.log.levels.WARN)
         return
     end
