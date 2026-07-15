@@ -36,6 +36,43 @@ M.defaults = {
    fzf_opts = {},
   },
  },
+ -- Tasks are plain markdown checkboxes inside your notes -- there is no index
+ -- and no separate task file, so any other markdown editor (including mobile
+ -- git clients) can tick a box and fzfkasten will see it on the next scan.
+ tasks = {
+  -- What counts as a task.
+  --   "all"      : every checkbox in a note.
+  --   "headings" : only checkboxes below a heading matching `headings` below.
+  -- Use "headings" when your notes use checkboxes for things that aren't
+  -- tasks (spec acceptance criteria, packing lists, ...) and you'd rather
+  -- opt in per section than opt out per note.
+  scope = "all",
+  -- Lua patterns matched against lowercased heading text (scope = "headings").
+  headings = { "^tasks?%f[%A]", "^to%-?dos?%f[%A]", "^タスク", "^やること" },
+  ignore = {
+   -- Frontmatter key that opts a whole note out when falsy (`tasks: false`).
+   -- Set to nil to disable the mechanism.
+   frontmatter_key = "tasks",
+   -- Directories (relative to `home`) skipped entirely.
+   dirs = { "templates" },
+  },
+  -- Ignore tasks in notes older than this many days; nil scans everything.
+  -- A note's date comes from its filename, then frontmatter `date:`, then
+  -- mtime. Useful when old notes carry tasks you'll never revisit.
+  since_days = nil,
+  -- Notes (relative to `home`) always scanned regardless of `since_days` --
+  -- e.g. a standing task list that isn't tied to any date.
+  always = {},
+  patterns = {
+   open = "^%s*[-*]%s+%[ %]%s+(.+)$",
+   done = "^%s*[-*]%s+%[[xX]%]%s+(.+)$",
+   priority = "^%((%u)%)%s+",
+   due = "due:(%d%d%d%d%-%d%d%-%d%d)",
+  },
+  -- function(tasks) called after each collect. Hook for exporting elsewhere
+  -- (an aggregated index note, todo.txt, an external tracker, ...).
+  on_collect = nil,
+ },
  transform = {
   insert_link = function(filename)
    return string.format("[[%s]]", filename)

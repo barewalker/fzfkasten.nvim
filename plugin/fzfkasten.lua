@@ -15,6 +15,8 @@ cmd("FzfKastenShowBacklinks", function() require('fzfkasten').show_backlinks() e
 cmd("FzfKastenFindDailyNotes", function() require('fzfkasten').find_daily_notes() end, { desc = "Fzfkasten: Find Daily Notes" })
 cmd("FzfKastenPickDailyDate", function() require('fzfkasten').pick_daily_date() end, { desc = "Fzfkasten: Pick a past date and open/create that daily note" })
 cmd("FzfKastenFindWeeklyNotes", function() require('fzfkasten').find_weekly_notes() end, { desc = "Fzfkasten: Find Weekly Notes" })
+cmd("FzfKastenTasks", function() require('fzfkasten').tasks() end, { desc = "Fzfkasten: Pick an open task and jump to its note" })
+cmd("FzfKastenTaskToggle", function() require('fzfkasten').task_toggle() end, { desc = "Fzfkasten: Toggle the checkbox on the current line" })
 cmd("FzfKastenClaudeSendBuffer", function() require('fzfkasten').claude_send_buffer() end, { desc = "Fzfkasten: Send note to Claude" })
 cmd("FzfKastenClaudeSendSelection", function() require('fzfkasten').claude_send_selection() end, { range = true, desc = "Fzfkasten: Send selection to Claude" })
 cmd("FzfKastenClaudeToggle", function() require('fzfkasten').claude_toggle() end, { desc = "Fzfkasten: Toggle Claude terminal" })
