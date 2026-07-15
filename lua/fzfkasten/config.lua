@@ -57,9 +57,17 @@ M.defaults = {
    dirs = { "templates" },
   },
   -- Ignore tasks in notes older than this many days; nil scans everything.
-  -- A note's date comes from its filename, then frontmatter `date:`, then
-  -- mtime. Useful when old notes carry tasks you'll never revisit.
+  -- Useful once old notes carry tasks you'll never revisit. Notes whose date
+  -- can't be determined are never aged out -- see `date_keys` / `date`.
   since_days = nil,
+  -- A note's date is read from its filename, then these frontmatter keys.
+  -- mtime is deliberately not used: git rewrites it on checkout, so it says
+  -- when the file synced, not when the note was written.
+  date_keys = { "date", "created" },
+  -- Optional function(path, lines, frontmatter) -> "YYYY-MM-DD"|nil, tried
+  -- before the above. For dates kept somewhere else, e.g. a body line like
+  -- "**Created**: 2026-04-30".
+  date = nil,
   -- Notes (relative to `home`) always scanned regardless of `since_days` --
   -- e.g. a standing task list that isn't tied to any date.
   always = {},
