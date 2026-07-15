@@ -15,8 +15,33 @@ local M = {}
 
 local DAY = 86400
 
--- A broken `tasks.date` hook would otherwise warn once per note scanned.
+-- A broken `tasks.date`/`tasks.filter` hook would otherwise warn once per
+-- note (or per task) scanned.
 local date_hook_warned = false
+local filter_hook_warned = false
+
+-- Ask the user's `filter` hook whether to keep a task. A hook that raises
+-- keeps the task: dropping tasks because someone's config threw would hide
+-- work with nothing to show for it.
+local function keep(task)
+    local fn = config.options.tasks.filter
+    if type(fn) ~= "function" then
+        return true
+    end
+    local ok, verdict = pcall(fn, task)
+    if not ok then
+        if not filter_hook_warned then
+            filter_hook_warned = true
+            vim.notify(
+                string.format("[Fzfkasten] tasks.filter raised on %s:%d: %s",
+                    task.rel, task.lineno, tostring(verdict)),
+                vim.log.levels.WARN
+            )
+        end
+        return true
+    end
+    return verdict ~= false
+end
 
 -- Every note under `home`. Used when `patterns.scan` is nil.
 local function all_notes()
@@ -216,6 +241,7 @@ function M.collect(opts)
     local cutoff = since and since ~= false and os.date("%Y-%m-%d", os.time() - since * DAY) or nil
 
     date_hook_warned = false
+    filter_hook_warned = false
     local tasks = {}
     for _, path in ipairs(candidate_notes()) do
         local rel = path:sub(#home + 2)
@@ -259,7 +285,7 @@ function M.collect(opts)
                                 end
                                 if raw then
                                     local text, priority, due = parse_task_text(raw, o.patterns)
-                                    table.insert(tasks, {
+                                    local task = {
                                         text = text,
                                         done = done,
                                         priority = priority,
@@ -268,7 +294,10 @@ function M.collect(opts)
                                         rel = rel,
                                         lineno = lineno,
                                         date = date,
-                                    })
+                                    }
+                                    if keep(task) then
+                                        table.insert(tasks, task)
+                                    end
                                 end
                             end
                         end
