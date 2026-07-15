@@ -236,7 +236,7 @@ Priority `(A)` and `due:YYYY-MM-DD` are optional; tasks sort by priority, then b
 | Key | Action |
 |---|---|
 | `<enter>` | Open the note at the task's line |
-| `<ctrl-x>` | Mark done in the note, then reopen the picker |
+| `<ctrl-x>` | Mark done in the note; the list refreshes in place |
 
 ### Choosing what counts as a task
 
