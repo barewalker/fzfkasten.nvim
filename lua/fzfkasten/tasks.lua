@@ -314,6 +314,9 @@ function M.pick(opts)
 
     fzf.fzf_exec(entries, vim.tbl_deep_extend("force", config.options.fzf, {
         prompt = "Tasks> ",
+        -- Entries carry paths relative to `home`; without this the previewer
+        -- resolves them against Neovim's cwd and fails to stat the note.
+        cwd = config.options.home,
         previewer = "builtin",
         fzf_opts = {
             ["--delimiter"] = ":",
