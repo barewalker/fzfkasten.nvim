@@ -304,13 +304,20 @@ end
 --- @param lineno number 1-indexed line holding the checkbox
 --- @return boolean true when the line was toggled
 function M.toggle_at(path, lineno)
+    if type(lineno) ~= "number" or lineno < 1 or vim.fn.filereadable(path) == 0 then
+        return false
+    end
+
     local bufnr = vim.fn.bufnr(path)
     if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) and vim.bo[bufnr].modified then
         vim.notify("[Fzfkasten] Buffer has unsaved changes: " .. path, vim.log.levels.WARN)
         return false
     end
 
-    local lines = vim.fn.readfile(path)
+    local ok, lines = pcall(vim.fn.readfile, path)
+    if not ok then
+        return false
+    end
     local line = lines[lineno]
     if not line then
         return false
@@ -325,7 +332,11 @@ function M.toggle_at(path, lineno)
     lines[lineno] = toggled
     vim.fn.writefile(lines, path)
     if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
-        vim.cmd("checktime " .. bufnr)
+        -- Cosmetic, and this may run from fzf's terminal context, so defer it.
+        -- Correctness doesn't depend on it: everything re-reads from disk.
+        vim.schedule(function()
+            pcall(vim.cmd, "checktime " .. bufnr)
+        end)
     end
     return true
 end
@@ -342,22 +353,23 @@ function M.toggle()
 end
 
 --- Pick an open task and jump to it in its source note.
---- `<ctrl-x>` marks the task done in the note and reopens the picker.
+--- `<ctrl-x>` marks the task done in its note and refreshes the list in place.
 --- @param opts table|nil forwarded to `M.collect`
 function M.pick(opts)
     opts = opts or {}
-    local tasks = M.collect(opts)
-    if #tasks == 0 then
+    if #M.collect(opts) == 0 then
         vim.notify("No open tasks found.", vim.log.levels.INFO)
         return
     end
 
-    local entries = {}
-    local by_entry = {}
-    for _, task in ipairs(tasks) do
-        local entry = to_entry(task)
-        table.insert(entries, entry)
-        by_entry[entry] = task
+    -- Contents as a function rather than a table so fzf's `reload` can
+    -- regenerate them: that keeps the cursor where it is, and the next task
+    -- moves up into place. Rebuilding the picker would send it back to the top.
+    local function contents(cb)
+        for _, task in ipairs(M.collect(opts)) do
+            cb(to_entry(task))
+        end
+        cb()
     end
 
     local function open(selected)
@@ -370,7 +382,7 @@ function M.pick(opts)
         end
     end
 
-    fzf.fzf_exec(entries, vim.tbl_deep_extend("force", config.options.fzf, {
+    fzf.fzf_exec(contents, vim.tbl_deep_extend("force", config.options.fzf, {
         prompt = "Tasks> ",
         -- Entries carry paths relative to `home`; without this the previewer
         -- resolves them against Neovim's cwd and fails to stat the note.
@@ -384,15 +396,21 @@ function M.pick(opts)
         },
         actions = {
             ['default'] = open,
-            ['ctrl-x'] = function(selected)
-                if not selected or #selected == 0 then return end
-                local task = by_entry[selected[1]]
-                if not task then return end
-                if M.toggle_at(task.path, task.lineno) then
-                    vim.notify("Done: " .. task.text, vim.log.levels.INFO)
-                    vim.schedule(function() M.pick(opts) end)
-                end
-            end,
+            -- `reload` re-runs `contents` in place: fzf keeps the cursor index,
+            -- so the task below the one just completed moves up under it and
+            -- you can work down the list without losing your place.
+            ['ctrl-x'] = {
+                fn = function(selected)
+                    if not selected or #selected == 0 then return end
+                    local entry = fzf.path.entry_to_file(selected[1], { cwd = config.options.home })
+                    -- `entry.line` is 0 when the entry carried no line number,
+                    -- and 0 is truthy in Lua.
+                    if entry.path and (entry.line or 0) > 0 then
+                        M.toggle_at(entry.path, entry.line)
+                    end
+                end,
+                reload = true,
+            },
         },
     }))
 end
