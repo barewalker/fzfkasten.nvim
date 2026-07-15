@@ -289,9 +289,30 @@ tasks = {
     due = "due:(%d%d%d%d%-%d%d%-%d%d)",
   },
   marks = { open = " ", done = "x" },  -- what `toggle` writes into the mark
+  filter = nil,  -- function(task) -> boolean; false drops the task
   on_collect = nil,  -- function(tasks) called after each collect
 }
 ```
+
+### Whose task is it?
+
+Meeting notes record action items for other people, and you probably don't want those in your list. There's no reliable way for fzfkasten to tell them apart — how you mark an owner is a convention of your notes, and often of your workplace — so `filter` decides:
+
+```lua
+tasks = {
+  filter = function(task)
+    -- "- [ ] revise the manual (Alice)" is Alice's job, not mine
+    for _, name in ipairs({ "Alice", "Bob" }) do
+      if task.text:find("(" .. name, 1, true) then return false end
+    end
+    return true
+  end,
+}
+```
+
+Prefer naming the people you want to exclude over guessing from shape. "Parenthesis means owner" looks tempting until you meet `- [ ] (A) ship it`, `- [ ] fix the workflow (repairs)`, and `- [ ] submit (due May)` — all parentheses, none an owner.
+
+`filter` runs on every task with everything parsed, so it can key off `due`, `priority`, `rel`, `date` or `done` just as well. Return `false` to drop; anything else keeps. A `filter` that raises keeps the task and warns once — losing work to a config error would be the worse failure.
 
 ### Redefining the syntax
 

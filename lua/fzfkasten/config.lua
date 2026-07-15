@@ -89,6 +89,12 @@ M.defaults = {
   },
   -- What the `toggle` pattern's mark capture is replaced with.
   marks = { open = " ", done = "x" },
+  -- function(task) -> boolean, called for every task found; return false to
+  -- drop it. The task is fully parsed by now (text, done, priority, due, rel,
+  -- lineno, date), so this is where conventions fzfkasten can't know about
+  -- live -- most often "whose task is this?", since meeting notes tend to
+  -- record action items for other people too.
+  filter = nil,
   -- function(tasks) called after each collect. Hook for exporting elsewhere
   -- (an aggregated index note, todo.txt, an external tracker, ...).
   on_collect = nil,
