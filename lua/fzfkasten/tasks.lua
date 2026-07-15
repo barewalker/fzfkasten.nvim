@@ -15,6 +15,9 @@ local M = {}
 
 local DAY = 86400
 
+-- A broken `tasks.date` hook would otherwise warn once per note scanned.
+local date_hook_warned = false
+
 -- Files worth reading at all: only those containing a checkbox. Everything
 -- else (frontmatter opt-out, heading scope, note date) needs line context, so
 -- it is decided in Lua on this much smaller set.
@@ -63,20 +66,45 @@ local function fence_delimiter(line)
     return line:match("^%s*(```+)") or line:match("^%s*(~~~+)")
 end
 
--- A note's date: filename first (dailies/weeklies are named by date), then
--- frontmatter, then mtime as a last resort.
-local function note_date(path, fm)
+-- A note's date, or nil when it doesn't record one.
+--
+-- Deliberately never falls back to mtime: notes living in a git repo have
+-- their mtime rewritten on every checkout, so it says when the file was
+-- synced, not when the note was written. Guessing from it would silently
+-- drop real tasks out of a `since_days` window.
+local function note_date(path, lines, fm)
+    local o = config.options.tasks
+    if type(o.date) == "function" then
+        local ok, d = pcall(o.date, path, lines, fm)
+        if ok and type(d) == "string" then
+            local matched = d:match("(%d%d%d%d%-%d%d%-%d%d)")
+            if matched then
+                return matched
+            end
+        elseif not ok and not date_hook_warned then
+            date_hook_warned = true
+            vim.notify(
+                string.format("[Fzfkasten] tasks.date raised on %s: %s", path, tostring(d)),
+                vim.log.levels.WARN
+            )
+        end
+    end
+
     local from_name = vim.fn.fnamemodify(path, ":t"):match("(%d%d%d%d%-%d%d%-%d%d)")
     if from_name then
         return from_name
     end
-    if fm.date then
-        local d = fm.date:match("(%d%d%d%d%-%d%d%-%d%d)")
-        if d then
-            return d
+
+    for _, key in ipairs(o.date_keys or {}) do
+        local v = fm[key]
+        if v then
+            local d = v:match("(%d%d%d%d%-%d%d%-%d%d)")
+            if d then
+                return d
+            end
         end
     end
-    return os.date("%Y-%m-%d", vim.fn.getftime(path))
+    return nil
 end
 
 local function is_falsy(v)
@@ -155,6 +183,7 @@ function M.collect(opts)
     end
     local cutoff = since and since ~= false and os.date("%Y-%m-%d", os.time() - since * DAY) or nil
 
+    date_hook_warned = false
     local tasks = {}
     for _, path in ipairs(files_with_checkboxes()) do
         local rel = path:sub(#home + 2)
@@ -164,8 +193,10 @@ function M.collect(opts)
                 local fm, fm_end = parse_frontmatter(lines)
                 local opted_out = o.ignore.frontmatter_key
                     and is_falsy(fm[o.ignore.frontmatter_key])
-                local date = note_date(path, fm)
-                local too_old = cutoff and date < cutoff and not is_always(rel)
+                local date = note_date(path, lines, fm)
+                -- A note with no date is never aged out: dropping tasks we
+                -- can't date would hide them with no way to notice.
+                local too_old = cutoff and date and date < cutoff and not is_always(rel)
 
                 if not opted_out and not too_old then
                     local in_scope = (o.scope ~= "headings")

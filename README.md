@@ -274,10 +274,11 @@ tasks = {
     frontmatter_key = "tasks",  -- `tasks: false` opts a note out; nil disables
     dirs = { "templates" },     -- directories (relative to `home`) never scanned
   },
-  -- Skip notes older than N days; nil scans everything. A note's date comes
-  -- from its filename, then frontmatter `date:`, then mtime.
+  -- Skip notes older than N days; nil scans everything.
   since_days = nil,
   always = {},  -- notes always scanned regardless of `since_days`
+  date_keys = { "date", "created" },  -- frontmatter keys holding a note's date
+  date = nil,  -- function(path, lines, frontmatter) -> "YYYY-MM-DD"|nil
   patterns = {
     open = "^%s*[-*]%s+%[ %]%s+(.+)$",
     done = "^%s*[-*]%s+%[[xX]%]%s+(.+)$",
@@ -293,6 +294,30 @@ tasks = {
 ```lua
 tasks = { since_days = 60, always = { "tasks/active.md" } }
 ```
+
+### How a note is dated
+
+`since_days` needs to know when a note is from. Fzfkasten reads that from the filename (`2026-07-15.md`), then from the frontmatter keys in `date_keys`.
+
+It never falls back to mtime. In a git-backed Zettelkasten — which is the point of syncing notes to your phone — every checkout rewrites mtime, so it records when the file arrived, not when the note was written. A `since_days` window built on it would drop real tasks on days you changed nothing.
+
+**A note whose date can't be determined is never aged out.** Its tasks always show. Failing open is deliberate: an extra task in the list is a nuisance you can see, while a silently hidden one is a task you simply lose. Use `tasks: false` to quiet an undated note you don't want.
+
+If your notes keep the date somewhere else, `date` reads it:
+
+```lua
+tasks = {
+  -- e.g. a "**Created**: 2026-04-30" line near the top of the body
+  date = function(path, lines, frontmatter)
+    for i = 1, math.min(10, #lines) do
+      local d = lines[i]:match("^%*%*Created%*%*:%s*(%d%d%d%d%-%d%d%-%d%d)")
+      if d then return d end
+    end
+  end,
+}
+```
+
+It runs before the filename and frontmatter; return `nil` to fall through to them.
 
 ### Exporting elsewhere
 
