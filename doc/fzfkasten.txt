@@ -9,3 +9,5 @@ COMMANDS
 - FzfKastenFindNotes: Search for notes.
 - FzfKastenTags: Search for tags.
 - FzfKastenInsert: Insert a link to a note.
+- FzfKastenTasks: Pick an open `- [ ]` task and jump to it. <ctrl-x> marks it done.
+- FzfKastenTaskToggle: Toggle the checkbox on the current line.

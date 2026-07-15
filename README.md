@@ -33,6 +33,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **Filename Sanitization**: Unicode-safe default (preserves CJK) with a user-overridable `transform.sanitize_filename` hook.
 - [x] **Template Placeholders**: Built-in `{{title}} {{date}} {{hdate}} {{year}} {{month}} {{day}} {{week}} {{time}}` plus user-defined entries via `template_placeholders` (string or function values).
 - [x] **Image Preview**: Delegated to `fzf-lua`'s previewer; see the [Image Preview](#image-preview) section for configuration.
+- [x] **Tasks**: Collect `- [ ]` checkboxes across every note, jump to the one you pick, and tick it off without leaving the picker. No index, no task file — see [Tasks](#tasks).
 
 ## Installation
 
@@ -198,6 +199,10 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
     { "gf", "<cmd>FzfKastenGotoLink<CR>", ft = "markdown", desc = "Follow wikilink / gf" }
     ```
 
+*   **`:FzfKastenTasks`**: Lists every open `- [ ]` checkbox across your notes. Pick one to jump to that line in its note; press `<ctrl-x>` to mark it done in the note itself. See [Tasks](#tasks).
+
+*   **`:FzfKastenTaskToggle`**: Toggles the checkbox on the current line between `- [ ]` and `- [x]`.
+
 *   **Other existing commands:** (e.g., `:FzfKastenDaily`, `:FzfKastenWeekly`, `:FzfKastenFindNotes`, `:FzfKastenTags`, `:FzfKastenInsert`, etc.)
 
 ### Following links to non-existing notes
@@ -212,6 +217,103 @@ require("fzfkasten").setup({
   },
 })
 ```
+
+## Tasks
+
+Tasks are plain markdown checkboxes written wherever they were born — in the meeting note, in today's daily, mid-paragraph. There is no task file to maintain and no index to rebuild: `:FzfKastenTasks` re-scans with `ripgrep` on every call (a few milliseconds for a few hundred notes).
+
+That property matters more than it looks. Because the notes *are* the ledger, anything else that can edit markdown joins in for free — a mobile git client, another editor, a script. Tick a box on your phone, and the next scan sees it. Nothing to sync, nothing to teach.
+
+```markdown
+# Tasks
+- [ ] (A) review the tech report due:2026-07-17
+- [ ] get a quotation
+- [x] already done
+```
+
+Priority `(A)` and `due:YYYY-MM-DD` are optional; tasks sort by priority, then by due date. Checkboxes inside fenced code blocks and frontmatter are ignored, so a note documenting this syntax won't report its own examples as tasks.
+
+| Key | Action |
+|---|---|
+| `<enter>` | Open the note at the task's line |
+| `<ctrl-x>` | Mark done in the note, then reopen the picker |
+
+### Choosing what counts as a task
+
+By default *every* checkbox is a task. If you also use checkboxes for things that aren't tasks — acceptance criteria in a spec, a packing list — you have two ways out, and they suit different habits.
+
+Opt out per note, with `tasks: false` in its frontmatter:
+
+```markdown
+---
+title: Deployment spec
+tasks: false
+---
+## Acceptance criteria
+- [ ] clone works        # not a task
+```
+
+Or opt in per section, by only collecting below task headings:
+
+```lua
+require("fzfkasten").setup({
+  tasks = { scope = "headings" },  -- only checkboxes under "# Tasks", "# ToDo", ...
+})
+```
+
+Prefer `tasks: false` when the non-tasks cluster in a few notes, and `scope = "headings"` when they're scattered. Note that `scope = "headings"` asks you to move a checkbox under a heading before it counts — a small copying step, which is exactly the kind of friction that kills task systems. Reach for it only if the opt-out isn't enough.
+
+### Configuration
+
+```lua
+tasks = {
+  scope = "all",  -- "all" | "headings"
+  -- Lua patterns matched against lowercased heading text (scope = "headings").
+  headings = { "^tasks?%f[%A]", "^to%-?dos?%f[%A]", "^タスク", "^やること" },
+  ignore = {
+    frontmatter_key = "tasks",  -- `tasks: false` opts a note out; nil disables
+    dirs = { "templates" },     -- directories (relative to `home`) never scanned
+  },
+  -- Skip notes older than N days; nil scans everything. A note's date comes
+  -- from its filename, then frontmatter `date:`, then mtime.
+  since_days = nil,
+  always = {},  -- notes always scanned regardless of `since_days`
+  patterns = {
+    open = "^%s*[-*]%s+%[ %]%s+(.+)$",
+    done = "^%s*[-*]%s+%[[xX]%]%s+(.+)$",
+    priority = "^%((%u)%)%s+",
+    due = "due:(%d%d%d%d%-%d%d%-%d%d)",
+  },
+  on_collect = nil,  -- function(tasks) called after each collect
+}
+```
+
+`since_days` earns its keep once your notes are a few years deep: old notes carry tasks you'll never revisit, and they drown the ones you will. Pair it with `always` for a standing list that shouldn't age out:
+
+```lua
+tasks = { since_days = 60, always = { "tasks/active.md" } }
+```
+
+### Exporting elsewhere
+
+`on_collect` receives the task list after each scan. The picker only exists inside Neovim, so this is the hook for getting the same list somewhere else — an aggregated index note you can read on your phone, a `todo.txt`, an external tracker:
+
+```lua
+tasks = {
+  on_collect = function(tasks)
+    local lines = { "# Open tasks", "" }
+    for _, t in ipairs(tasks) do
+      local note = vim.fn.fnamemodify(t.path, ":t:r")
+      table.insert(lines, string.format("- [[%s]] — %s", note, t.text))
+    end
+    vim.fn.writefile(lines, vim.fn.expand("~/notes/tasks/OPEN.md"))
+  end,
+}
+```
+
+Write the export without checkboxes, as above. A generated file is a *view*: a box in it invites a tick that the next scan will overwrite.
+
+Each task is `{ text, done, priority, due, path, rel, lineno, date }`. `require("fzfkasten").collect_tasks(opts)` returns the same list directly, and `require("fzfkasten.tasks").toggle_at(path, lineno)` flips one checkbox on disk.
 
 ## Claude Code Integration
 
