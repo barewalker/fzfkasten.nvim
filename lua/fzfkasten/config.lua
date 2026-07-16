@@ -91,6 +91,10 @@ M.defaults = {
   },
   -- What the `toggle` pattern's mark capture is replaced with.
   marks = { open = " ", done = "x" },
+  -- Written in front of a line that `task_tag` promotes to a checkbox. A
+  -- literal, not a pattern: `patterns.open` is a regex and several strings
+  -- match it, so the one to write can't be derived from it.
+  new_checkbox = "- [ ] ",
   -- When set (e.g. "todo"), only checkboxes carrying `#<require_tag>` count as
   -- tasks. Everything else becomes the inbox (`:FzfKastenTaskInbox`), so
   -- checkboxes you never meant as your own -- other people's action items in

@@ -173,6 +173,44 @@ local function heading_starts_tasks(text)
     return false
 end
 
+-- Which lines of a note can hold a task: below the frontmatter, outside fenced
+-- blocks, and -- when `scope` is "headings" -- under a heading that starts a
+-- task list. A heading itself never qualifies.
+--
+-- Shared by `M.collect` and `M.tag` deliberately. Tagging a line the scan
+-- skips would write a task that shows up nowhere, and two copies of these
+-- rules would drift apart without anyone noticing until a task went missing.
+-- @return table set of the 1-indexed line numbers that qualify
+local function scannable_lines(lines, fm_end)
+    local o = config.options.tasks
+    local scannable = {}
+    local in_scope = (o.scope ~= "headings")
+    local fence = nil
+    for lineno = fm_end + 1, #lines do
+        local line = lines[lineno]
+        local delim = fence_delimiter(line)
+        if fence then
+            -- Only a delimiter of the same kind, at least as long as the
+            -- opening one, closes the block.
+            if delim and #delim >= #fence and delim:sub(1, 1) == fence:sub(1, 1) then
+                fence = nil
+            end
+        elseif delim then
+            fence = delim
+        else
+            local heading = line:match("^#+%s+(.*)$")
+            if heading then
+                if o.scope == "headings" then
+                    in_scope = heading_starts_tasks(vim.trim(heading))
+                end
+            elseif in_scope then
+                scannable[lineno] = true
+            end
+        end
+    end
+    return scannable
+end
+
 local function is_always(rel)
     for _, p in ipairs(config.options.tasks.always or {}) do
         if rel == p then
@@ -231,6 +269,30 @@ local function toggle_line(line)
         end
     end
     return toggled
+end
+
+-- Raise a line to a tagged task, or nil when there is nothing to raise it
+-- from (blank line) or nothing left to do (already tagged).
+--
+-- Prose and bare bullets become checkboxes on the way: noticing mid-sentence
+-- that a line is yours to do is exactly when you want one keystroke, not
+-- three edits. The indent is kept so the line stays where it sits in a list.
+local function tag_line(line, tag)
+    local o = config.options.tasks
+    if not line:match(o.patterns.open) and not line:match(o.patterns.done) then
+        local indent, text = line:match("^(%s*)(.-)%s*$")
+        -- Strip a bullet the line already has, so promoting it doesn't write
+        -- a second one ("- - [ ] x").
+        text = text:gsub("^[-*]%s+", "")
+        if text == "" then
+            return nil
+        end
+        line = indent .. o.new_checkbox .. text
+    end
+    if has_tag(line, tag) then
+        return nil
+    end
+    return line:gsub("%s*$", "") .. " #" .. tag
 end
 
 local function sort_tasks(tasks)
@@ -293,58 +355,41 @@ function M.collect(opts)
                 local skip_note = opted_out or (aged_out and not o.require_tag)
 
                 if not skip_note then
-                    local in_scope = (o.scope ~= "headings")
-                    local fence = nil
+                    local scannable = scannable_lines(lines, fm_end)
                     for lineno = fm_end + 1, #lines do
-                        local line = lines[lineno]
-                        local delim = fence_delimiter(line)
-                        if fence then
-                            -- Only a delimiter of the same kind, at least as
-                            -- long as the opening one, closes the block.
-                            if delim and #delim >= #fence and delim:sub(1, 1) == fence:sub(1, 1) then
-                                fence = nil
+                        if scannable[lineno] then
+                            local line = lines[lineno]
+                            local raw = line:match(o.patterns.open)
+                            local done = false
+                            if not raw then
+                                raw = line:match(o.patterns.done)
+                                done = raw ~= nil
                             end
-                        elseif delim then
-                            fence = delim
-                        else
-                            local heading = line:match("^#+%s+(.*)$")
-                            if heading then
-                                if o.scope == "headings" then
-                                    in_scope = heading_starts_tasks(vim.trim(heading))
-                                end
-                            elseif in_scope then
-                                local raw = line:match(o.patterns.open)
-                                local done = false
-                                if not raw then
-                                    raw = line:match(o.patterns.done)
-                                    done = raw ~= nil
-                                end
-                                if raw then
-                                    local text, priority, due, done_at = parse_task_text(raw, o)
-                                    local task = {
-                                        text = text,
-                                        done = done,
-                                        done_at = done_at,
-                                        priority = priority,
-                                        due = due,
-                                        path = path,
-                                        rel = rel,
-                                        lineno = lineno,
-                                        date = date,
-                                    }
-                                    -- With `require_tag` set, a checkbox is a
-                                    -- task only if tagged; the rest are inbox.
-                                    local tagged = not o.require_tag or has_tag(text, o.require_tag)
-                                    -- A tagged task never ages out. Tagging it
-                                    -- was a decision; expiring it by date would
-                                    -- hide work that was explicitly accepted,
-                                    -- and it would fall out of the inbox too --
-                                    -- invisible in both views. `since_days`
-                                    -- bounds the inbox, not your commitments.
-                                    if not (aged_out and not tagged)
-                                        and tagged == wants_tagged and keep(task) then
-                                        table.insert(tasks, task)
-                                    end
+                            if raw then
+                                local text, priority, due, done_at = parse_task_text(raw, o)
+                                local task = {
+                                    text = text,
+                                    done = done,
+                                    done_at = done_at,
+                                    priority = priority,
+                                    due = due,
+                                    path = path,
+                                    rel = rel,
+                                    lineno = lineno,
+                                    date = date,
+                                }
+                                -- With `require_tag` set, a checkbox is a task
+                                -- only if tagged; the rest are inbox.
+                                local tagged = not o.require_tag or has_tag(text, o.require_tag)
+                                -- A tagged task never ages out. Tagging it was
+                                -- a decision; expiring it by date would hide
+                                -- work that was explicitly accepted, and it
+                                -- would fall out of the inbox too -- invisible
+                                -- in both views. `since_days` bounds the inbox,
+                                -- not your commitments.
+                                if not (aged_out and not tagged)
+                                    and tagged == wants_tagged and keep(task) then
+                                    table.insert(tasks, task)
                                 end
                             end
                         end
@@ -479,6 +524,58 @@ function M.toggle()
         return
     end
     vim.api.nvim_buf_set_lines(0, lineno - 1, lineno, false, { toggled })
+end
+
+--- Tag the current line -- or every line in a range -- as a task, promoting
+--- prose and bare bullets to checkboxes on the way.
+---
+--- Edits the buffer rather than the file, unlike `M.tag_at`: this runs while
+--- you are writing the note, so refusing on an unsaved buffer would refuse
+--- almost every time it is wanted. The range is what makes an old note full
+--- of untagged checkboxes tractable -- select them and tag the lot.
+--- @param opts table|nil `{ line1 = number, line2 = number }`, 1-indexed and
+---   inclusive; defaults to the cursor line.
+function M.tag(opts)
+    local tag = config.options.tasks.require_tag
+    if not tag then
+        vim.notify("[Fzfkasten] tasks.require_tag is not set.", vim.log.levels.WARN)
+        return
+    end
+    opts = opts or {}
+    local line1 = opts.line1 or vim.api.nvim_win_get_cursor(0)[1]
+    local line2 = opts.line2 or line1
+    if line2 < line1 then
+        line1, line2 = line2, line1
+    end
+
+    -- The whole buffer, because whether a line can hold a task depends on what
+    -- is above it: the frontmatter, an open fence, the last heading.
+    local all = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    line2 = math.min(line2, #all)
+    local _, fm_end = parse_frontmatter(all)
+    local scannable = scannable_lines(all, fm_end)
+
+    local lines = {}
+    local tagged = 0
+    for lineno = line1, line2 do
+        local line = all[lineno]
+        local out = scannable[lineno] and tag_line(line, tag)
+        if out then
+            line = out
+            tagged = tagged + 1
+        end
+        table.insert(lines, line)
+    end
+    if tagged == 0 then
+        vim.notify(
+            line1 == line2
+                and "[Fzfkasten] Nothing to tag on this line."
+                or "[Fzfkasten] Nothing to tag in that range.",
+            vim.log.levels.WARN
+        )
+        return
+    end
+    vim.api.nvim_buf_set_lines(0, line1 - 1, line2, false, lines)
 end
 
 --- Pick the checkboxes `require_tag` leaves out, for triage. Same picker as
