@@ -14,3 +14,5 @@ COMMANDS
 - FzfKastenTaskInbox: Triage checkboxes not tagged as tasks. <ctrl-t> tags one.
 - FzfKastenTaskTag: Tag the current line as a task, making it a checkbox first
   if it isn't one. Takes a range, so a selection is tagged in one go.
+- FzfKastenTaskCancel: Drop the task on the current line -- out of the lists,
+  still in the note -- or reopen it if already dropped. <ctrl-d> in the picker.

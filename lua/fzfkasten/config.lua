@@ -81,16 +81,22 @@ M.defaults = {
    -- on large collections, but always agrees with `open`/`done`.
    -- (`false`, not `nil`: setup() merges over the defaults, so a nil here
    -- just leaves this default in place.)
-   scan = [[^\s*[-*]\s+\[[ xX]\]\s+]],
+   scan = [[^\s*[-*]\s+\[[ xX-]\]\s+]],
    open = "^%s*[-*]%s+%[ %]%s+(.+)$",
    done = "^%s*[-*]%s+%[[xX]%]%s+(.+)$",
-   -- Captures (before)(mark)(after) around a checkbox's mark, for toggling.
-   toggle = "^(%s*[-*]%s+%[)([ xX])(%])",
+   -- A task you dropped. Kept out of every list, but still in the note: the
+   -- line is the only record that you ever meant to do it.
+   cancelled = "^%s*[-*]%s+%[%-%]%s+(.+)$",
+   -- Captures (before)(mark)(after) around a checkbox's mark. Used to rewrite
+   -- the mark, and to find where the task text starts -- so the captures have
+   -- to cover the checkbox exactly, leaving the text to follow them. Its mark
+   -- class must admit every mark in `marks`.
+   toggle = "^(%s*[-*]%s+%[)([ xX-])(%])",
    priority = "^%((%u)%)%s+",
    due = "due:(%d%d%d%d%-%d%d%-%d%d)",
   },
   -- What the `toggle` pattern's mark capture is replaced with.
-  marks = { open = " ", done = "x" },
+  marks = { open = " ", done = "x", cancelled = "-" },
   -- Written in front of a line that `task_tag` promotes to a checkbox. A
   -- literal, not a pattern: `patterns.open` is a regex and several strings
   -- match it, so the one to write can't be derived from it.
@@ -113,6 +119,22 @@ M.defaults = {
    format = " done:%Y-%m-%d %H:%M",
    pattern = "%s*done:(%d%d%d%d%-%d%d%-%d%d %d%d:%d%d)",
   },
+  -- The same, for a task you dropped (its capture becomes
+  -- `task.cancelled_at`). Deliberately not `done_stamp`: dropping a task is
+  -- not finishing it, and a cancelled task in "what did I finish last week"
+  -- would be a lie. `false` writes nothing -- not nil, which setup() would
+  -- merge away, leaving this default in place.
+  cancel_stamp = {
+   format = " cancelled:%Y-%m-%d",
+   pattern = "%s*cancelled:(%d%d%d%d%-%d%d%-%d%d)",
+  },
+  -- Wrapped around the text of a cancelled task, and removed when it is
+  -- reopened. Decoration, never state: `marks.cancelled` alone says whether a
+  -- task is cancelled, and if the two disagree the mark wins. It earns its
+  -- place because `[-]` is not a checkbox to GitHub or a phone's markdown
+  -- viewer, which render it as literal text -- struck-through text still
+  -- reads as dropped anywhere the note is read. `false` writes nothing.
+  cancel_strike = "~~",
   -- function(task) -> boolean, called for every task found; return false to
   -- drop it. The task is fully parsed by now (text, done, priority, due, rel,
   -- lineno, date), so this is where conventions fzfkasten can't know about

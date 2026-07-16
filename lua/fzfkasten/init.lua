@@ -20,6 +20,7 @@ M.tasks = function() require('fzfkasten.tasks').pick() end
 M.task_toggle = function() require('fzfkasten.tasks').toggle() end
 M.task_inbox = function() require('fzfkasten.tasks').inbox() end
 M.task_tag = function(opts) require('fzfkasten.tasks').tag(opts) end
+M.task_cancel = function() require('fzfkasten.tasks').cancel() end
 M.collect_tasks = function(opts) return require('fzfkasten.tasks').collect(opts) end
 M.claude_send_buffer = function() require('fzfkasten.claude').send_current_buffer() end
 M.claude_send_selection = function() require('fzfkasten.claude').send_selection() end
