@@ -89,6 +89,24 @@ M.defaults = {
   },
   -- What the `toggle` pattern's mark capture is replaced with.
   marks = { open = " ", done = "x" },
+  -- When set (e.g. "todo"), only checkboxes carrying `#<require_tag>` count as
+  -- tasks. Everything else becomes the inbox (`:FzfKastenTaskInbox`), so
+  -- checkboxes you never meant as your own -- other people's action items in
+  -- meeting minutes, acceptance criteria -- stay out of the list without
+  -- disappearing. nil means every checkbox is a task.
+  require_tag = nil,
+  -- Written when a task is completed and removed when it is reopened, so you
+  -- can answer "what did I finish last week". `format` is an os.date format;
+  -- `pattern` must match what `format` writes (its capture becomes
+  -- `task.done_at`) so the stamp can be stripped again. nil writes nothing.
+  --
+  -- The checkbox stays the single source of truth for done-ness -- the stamp
+  -- only records when. Keeping state in a tag instead would desync the moment
+  -- another editor ticks the box without knowing about the tag.
+  done_stamp = {
+   format = " done:%Y-%m-%d %H:%M",
+   pattern = "%s*done:(%d%d%d%d%-%d%d%-%d%d %d%d:%d%d)",
+  },
   -- function(task) -> boolean, called for every task found; return false to
   -- drop it. The task is fully parsed by now (text, done, priority, due, rel,
   -- lineno, date), so this is where conventions fzfkasten can't know about
