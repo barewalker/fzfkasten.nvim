@@ -207,6 +207,8 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
 
 *   **`:FzfKastenTaskTag`**: Tags the current line as a task, turning prose or a bare bullet into a checkbox on the way. Takes a range, so a visual selection is tagged in one go. See [Tasks](#tasks).
 
+*   **`:FzfKastenTaskCancel`**: Drops the task on the current line — out of the lists, still in the note — or reopens it if it is already dropped. See [Tasks](#tasks).
+
 *   **Other existing commands:** (e.g., `:FzfKastenDaily`, `:FzfKastenWeekly`, `:FzfKastenFindNotes`, `:FzfKastenTags`, `:FzfKastenInsert`, etc.)
 
 ### Following links to non-existing notes
@@ -241,6 +243,7 @@ Priority `(A)` and `due:YYYY-MM-DD` are optional; tasks sort by priority, then b
 |---|---|
 | `<enter>` | Open the note at the task's line |
 | `<ctrl-x>` | Mark done in the note; the list refreshes in place |
+| `<ctrl-d>` | Drop the task: out of the list, still in the note |
 | `<ctrl-t>` | Add `require_tag`, promoting an inbox entry to a task |
 
 ### Choosing what counts as a task
@@ -286,20 +289,26 @@ tasks = {
   date = nil,  -- function(path, lines, frontmatter) -> "YYYY-MM-DD"|nil
   patterns = {
     -- A ripgrep regex (not a Lua pattern), see "Redefining the syntax" below.
-    scan = [[^\s*[-*]\s+\[[ xX]\]\s+]],
+    scan = [[^\s*[-*]\s+\[[ xX-]\]\s+]],
     open = "^%s*[-*]%s+%[ %]%s+(.+)$",
     done = "^%s*[-*]%s+%[[xX]%]%s+(.+)$",
-    toggle = "^(%s*[-*]%s+%[)([ xX])(%])",  -- captures (before)(mark)(after)
+    cancelled = "^%s*[-*]%s+%[%-%]%s+(.+)$",
+    toggle = "^(%s*[-*]%s+%[)([ xX-])(%])",  -- captures (before)(mark)(after)
     priority = "^%((%u)%)%s+",
     due = "due:(%d%d%d%d%-%d%d%-%d%d)",
   },
-  marks = { open = " ", done = "x" },  -- what `toggle` writes into the mark
+  marks = { open = " ", done = "x", cancelled = "-" },  -- what `toggle` writes
   new_checkbox = "- [ ] ",  -- literal `:FzfKastenTaskTag` puts in front of prose
   require_tag = nil,  -- e.g. "todo": only #todo checkboxes are tasks
   done_stamp = {      -- written on completion, removed on reopen; nil disables
     format = " done:%Y-%m-%d %H:%M",
     pattern = "%s*done:(%d%d%d%d%-%d%d%-%d%d %d%d:%d%d)",
   },
+  cancel_stamp = {    -- the same, for a task you dropped; false disables
+    format = " cancelled:%Y-%m-%d",
+    pattern = "%s*cancelled:(%d%d%d%d%-%d%d%-%d%d)",
+  },
+  cancel_strike = "~~",  -- wrapped around a cancelled task's text; false disables
   filter = nil,  -- function(task) -> boolean; false drops the task
   on_collect = nil,  -- function(tasks) called after each collect
 }
@@ -359,6 +368,24 @@ For anything the tag can't express, `filter` runs on every task with everything 
 
 The stamp records *when*, never *whether*: **the checkbox stays the only source of done-ness.** It is tempting to keep the state in a tag instead — `#todo` becoming `#done` — but any other editor ticking the box knows nothing about your tags, and then the box says done while the tag says open, with no way to tell which is right. One state, one place.
 
+### Dropping a task
+
+Not everything you accept gets done; some of it stops being worth doing. Deleting the line would be the obvious move and the wrong one — that a job was once on your list is a fact about the project, and it is the only trace that you thought about it at all. `<ctrl-d>` in the picker, or `:FzfKastenTaskCancel` on the line, drops a task without losing it:
+
+```markdown
+- [ ] (A) redraw the figures #todo due:2026-07-20
+      ↓
+- [-] (A) ~~redraw the figures #todo due:2026-07-20~~ cancelled:2026-07-17
+```
+
+It leaves the task list the same way a completed one does, and the same command puts it back. Ask for it with `collect({ cancelled = true })` when you want to know what you dropped.
+
+**A dropped task is not a finished one, so it does not become `- [x]`.** That would put it in "what did I finish last week", which is a lie your own notes would tell you later; `cancel_stamp` is separate from `done_stamp` for the same reason. Cancelling something already done is refused rather than guessed at, since the two claims contradict each other.
+
+The strikethrough is decoration, and the mark is the state — `marks.cancelled` alone decides, and if a stray `~~` disagrees the mark wins. It is there because `[-]` is not a checkbox to GitHub or a phone's markdown viewer, which show it as literal text; struck-through text still reads as dropped wherever the note is read, which matters when the notes are synced and read outside Neovim. Set `cancel_strike = false` for the mark alone — `false` rather than `nil`, for the reason described under [Redefining the syntax](#redefining-the-syntax).
+
+Note where the wrap sits: **inside the priority, outside the stamp.** `patterns.priority` is anchored to the start of the task's text, so `~~(A) redraw~~` would hide the `(A)` for as long as the task stayed cancelled — and the cancelling is not itself cancelled, so the stamp stays out of the strike too.
+
 To review what you finished, ask for completed tasks and read their stamps:
 
 ```lua
@@ -370,8 +397,8 @@ local done = require("fzfkasten").collect_tasks({ done = true })
 `patterns` and `marks` between them define what a task looks like, and all of it is yours to change. Three of the patterns work together and have to agree:
 
 - `scan` finds which notes are worth reading. It is a **ripgrep regex**, not a Lua pattern — the two are different languages, so it can't be derived from `open`/`done` for you. Keep it a superset of both, or set it to `false` to skip the pre-filter and read every note (slower, but it can't disagree with anything).
-- `open` and `done` decide what each line is, and capture the task's text.
-- `toggle` captures `(before)(mark)(after)` around the mark, and `marks` says what to write into it.
+- `open`, `done` and `cancelled` decide what each line is, and capture the task's text.
+- `toggle` captures `(before)(mark)(after)` around the mark, and `marks` says what to write into it. Its mark class has to admit every mark in `marks`, or the states it leaves out become unreachable. It also pins down where the checkbox ends and the text starts, which is how a task gets rewritten in place.
 
 `new_checkbox` has to be redefined alongside them for the same reason `scan` does: it is the literal `:FzfKastenTaskTag` writes in front of prose, and a pattern matches many strings without saying which one to produce.
 
@@ -380,14 +407,15 @@ Taken together, they let you use a different notation end to end:
 ```lua
 tasks = {
   patterns = {
-    scan = [[^\s*[-*]\s+\([ xX]\)\s+]],      -- ripgrep regex
+    scan = [[^\s*[-*]\s+\([ xX-]\)\s+]],     -- ripgrep regex
     open = "^%s*[-*]%s+%( %)%s+(.+)$",       -- - ( ) buy milk
     done = "^%s*[-*]%s+%([xX]%)%s+(.+)$",    -- - (x) buy milk
-    toggle = "^(%s*[-*]%s+%()([ xX])(%))",
+    cancelled = "^%s*[-*]%s+%(%-%)%s+(.+)$", -- - (-) buy milk
+    toggle = "^(%s*[-*]%s+%()([ xX-])(%))",
     priority = "^%[(%u)%]%s+",               -- - ( ) [A] buy milk
     due = "due:(%d%d%d%d%-%d%d%-%d%d)",
   },
-  marks = { open = " ", done = "x" },
+  marks = { open = " ", done = "x", cancelled = "-" },
   new_checkbox = "- ( ) ",                   -- what `:FzfKastenTaskTag` writes
 }
 ```

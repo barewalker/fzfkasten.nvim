@@ -225,7 +225,18 @@ local function has_tag(text, tag)
     return text:find("#" .. vim.pesc(tag) .. "%f[%W]") ~= nil
 end
 
--- Pull `(A)`, `due:YYYY-MM-DD` and the completion stamp out of the task text.
+-- Strip the strikethrough a cancelled task wears, or return the text as it
+-- came. Only a wrap around the whole text is removed: a `~~` the note's author
+-- put there for their own reasons is theirs, not ours to unwrap.
+local function unstrike(text, wrap)
+    if not wrap or wrap == "" then
+        return text
+    end
+    local inner = text:match("^" .. vim.pesc(wrap) .. "(.*)" .. vim.pesc(wrap) .. "$")
+    return inner or text
+end
+
+-- Pull `(A)`, `due:YYYY-MM-DD` and the stamps out of the task text.
 local function parse_task_text(text, o)
     local priority = text:match(o.patterns.priority)
     if priority then
@@ -241,17 +252,55 @@ local function parse_task_text(text, o)
             text = text:gsub(stamp.pattern, "")
         end
     end
-    return vim.trim(text), priority, due, done_at
+
+    local cancelled_at
+    local cancel = o.cancel_stamp
+    if cancel and cancel.pattern then
+        cancelled_at = text:match(cancel.pattern)
+        if cancelled_at then
+            text = text:gsub(cancel.pattern, "")
+        end
+    end
+    -- After the stamp, which sits outside the strikethrough.
+    text = unstrike(vim.trim(text), o.cancel_strike)
+
+    return vim.trim(text), priority, due, done_at, cancelled_at
 end
 
--- Flip a checkbox line, or nil when the line holds no checkbox. Driven by
--- `patterns.toggle` (captures before/mark/after) and `marks`, so a user who
--- redefines the checkbox syntax keeps toggling.
+-- Split a checkbox line into its checkbox ("- [ ] "), the mark inside it, and
+-- the text after it -- or nil when the line holds no checkbox.
+--
+-- `patterns.toggle`'s captures cover the checkbox and nothing else, so the
+-- text is whatever follows them. That is the one place the checkbox syntax is
+-- pinned down, which is why rewriting a task goes through here.
+-- @return table|nil `{ before, mark, after, rest }`; the line is exactly
+--   `before .. mark .. after .. rest`, so rewriting the mark is a concat.
+local function split_checkbox(line)
+    local before, mark, after = line:match(config.options.tasks.patterns.toggle)
+    if not before then
+        return nil
+    end
+    return {
+        before = before,
+        mark = mark,
+        after = after,
+        rest = line:sub(#before + #mark + #after + 1),
+    }
+end
+
+-- Flip a checkbox line between open and done, or nil when the line holds no
+-- checkbox. A cancelled task is refused rather than silently reopened: `- [-]`
+-- is a decision, and there is a command that reverses it.
 local function toggle_line(line)
     local o = config.options.tasks
+    local cb = split_checkbox(line)
+    if cb and cb.mark == o.marks.cancelled then
+        return nil, "cancelled"
+    end
+
     local now_done
-    local toggled, n = line:gsub(o.patterns.toggle, function(before, mark, after)
-        now_done = mark == o.marks.open
+    local toggled, n = line:gsub(o.patterns.toggle, function(before, m, after)
+        now_done = m == o.marks.open
         return before .. (now_done and o.marks.done or o.marks.open) .. after
     end, 1)
     if n == 0 then
@@ -271,6 +320,60 @@ local function toggle_line(line)
     return toggled
 end
 
+-- Cancel a task, or reopen one already cancelled. Returns the rewritten line,
+-- or nil plus a reason.
+--
+-- Cancelling is not completing, so a done task is refused: `- [x]` says the
+-- work happened, and dropping it afterwards is a contradiction rather than
+-- something to guess at. The line itself always stays -- that it was once a
+-- task is the record worth keeping, and deleting it is what loses that.
+--
+-- The strikethrough goes around the text but inside the priority and the
+-- stamp: `priority` is anchored to the start of the text, so `~~(A) foo~~`
+-- would hide it, and the cancelling is not itself cancelled.
+local function cancel_line(line)
+    local o = config.options.tasks
+    local cb = split_checkbox(line)
+    if not cb then
+        return nil, "no checkbox"
+    end
+    if cb.mark == o.marks.done then
+        return nil, "done"
+    end
+
+    local lead, text = cb.rest:match("^(%s*)(.-)%s*$")
+    if text == "" then
+        return nil, "no checkbox"
+    end
+
+    -- Keep the priority marker where it is, ahead of anything we wrap.
+    local kept = ""
+    if text:match(o.patterns.priority) then
+        local body = text:gsub(o.patterns.priority, "", 1)
+        kept = text:sub(1, #text - #body)
+        text = body
+    end
+
+    local reopening = cb.mark == o.marks.cancelled
+    local stamp = o.cancel_stamp
+    if stamp and stamp.pattern then
+        text = vim.trim(text:gsub(stamp.pattern, ""))
+    end
+    text = unstrike(text, o.cancel_strike)
+
+    if not reopening then
+        if o.cancel_strike and o.cancel_strike ~= "" then
+            text = o.cancel_strike .. text .. o.cancel_strike
+        end
+        if stamp and stamp.format and stamp.pattern then
+            text = text .. os.date(stamp.format)
+        end
+    end
+
+    local mark = reopening and o.marks.open or o.marks.cancelled
+    return cb.before .. mark .. cb.after .. lead .. kept .. text
+end
+
 -- Raise a line to a tagged task, or nil when there is nothing to raise it
 -- from (blank line) or nothing left to do (already tagged).
 --
@@ -279,7 +382,9 @@ end
 -- three edits. The indent is kept so the line stays where it sits in a list.
 local function tag_line(line, tag)
     local o = config.options.tasks
-    if not line:match(o.patterns.open) and not line:match(o.patterns.done) then
+    -- Any checkbox, whatever its mark: asking `open`/`done` instead would read
+    -- a cancelled task as prose and bullet it a second time.
+    if not split_checkbox(line) then
         local indent, text = line:match("^(%s*)(.-)%s*$")
         -- Strip a bullet the line already has, so promoting it doesn't write
         -- a second one ("- - [ ] x").
@@ -316,10 +421,12 @@ end
 
 --- Collect tasks from every note under `home`.
 --- @param opts table|nil `{ since_days = number|false, done = boolean,
----   inbox = boolean }`. `since_days = false` disables the date window for this
----   call; `inbox = true` returns the checkboxes `require_tag` leaves out.
---- @return table list of
----   `{ text, done, done_at, priority, due, path, rel, lineno, date }`
+---   cancelled = boolean, inbox = boolean }`. `since_days = false` disables the
+---   date window for this call; `inbox = true` returns the checkboxes
+---   `require_tag` leaves out. `done` and `cancelled` each add that state to
+---   the result; both are left out otherwise.
+--- @return table list of `{ text, done, done_at, cancelled, cancelled_at,
+---   priority, due, path, rel, lineno, date }`
 function M.collect(opts)
     opts = opts or {}
     local o = config.options.tasks
@@ -360,17 +467,24 @@ function M.collect(opts)
                         if scannable[lineno] then
                             local line = lines[lineno]
                             local raw = line:match(o.patterns.open)
-                            local done = false
+                            local done, cancelled = false, false
                             if not raw then
                                 raw = line:match(o.patterns.done)
                                 done = raw ~= nil
                             end
+                            if not raw and o.patterns.cancelled then
+                                raw = line:match(o.patterns.cancelled)
+                                cancelled = raw ~= nil
+                            end
                             if raw then
-                                local text, priority, due, done_at = parse_task_text(raw, o)
+                                local text, priority, due, done_at, cancelled_at =
+                                    parse_task_text(raw, o)
                                 local task = {
                                     text = text,
                                     done = done,
                                     done_at = done_at,
+                                    cancelled = cancelled,
+                                    cancelled_at = cancelled_at,
                                     priority = priority,
                                     due = due,
                                     path = path,
@@ -401,6 +515,11 @@ function M.collect(opts)
 
     if not opts.done then
         tasks = vim.tbl_filter(function(t) return not t.done end, tasks)
+    end
+    -- Cancelled tasks are out of both lists by default: dropping one was the
+    -- point. `cancelled = true` is how you go looking for what you dropped.
+    if not opts.cancelled then
+        tasks = vim.tbl_filter(function(t) return not t.cancelled end, tasks)
     end
     sort_tasks(tasks)
 
@@ -451,9 +570,14 @@ function M.toggle_at(path, lineno)
         return false
     end
 
-    local toggled = toggle_line(line)
+    local toggled, why = toggle_line(line)
     if not toggled then
-        vim.notify("[Fzfkasten] No checkbox on that line.", vim.log.levels.WARN)
+        vim.notify(
+            why == "cancelled"
+                and "[Fzfkasten] That task is cancelled. Reopen it first."
+                or "[Fzfkasten] No checkbox on that line.",
+            vim.log.levels.WARN
+        )
         return false
     end
 
@@ -518,12 +642,75 @@ end
 --- Toggle the checkbox on the current line of the current buffer.
 function M.toggle()
     local lineno = vim.api.nvim_win_get_cursor(0)[1]
-    local toggled = toggle_line(vim.api.nvim_get_current_line())
+    local toggled, why = toggle_line(vim.api.nvim_get_current_line())
     if not toggled then
-        vim.notify("[Fzfkasten] No checkbox on this line.", vim.log.levels.WARN)
+        vim.notify(
+            why == "cancelled"
+                and "[Fzfkasten] This task is cancelled. Reopen it first."
+                or "[Fzfkasten] No checkbox on this line.",
+            vim.log.levels.WARN
+        )
         return
     end
     vim.api.nvim_buf_set_lines(0, lineno - 1, lineno, false, { toggled })
+end
+
+-- Why `cancel_line` refused, in words. Shared so the buffer and the file paths
+-- say the same thing.
+local function cancel_refusal(why, here)
+    if why == "done" then
+        return "[Fzfkasten] That task is done, not dropped. Reopen it first "
+            .. "if you meant to cancel it."
+    end
+    return "[Fzfkasten] No checkbox on " .. (here and "this" or "that") .. " line."
+end
+
+--- Cancel the task on the current line, or reopen it if already cancelled.
+function M.cancel()
+    local lineno = vim.api.nvim_win_get_cursor(0)[1]
+    local cancelled, why = cancel_line(vim.api.nvim_get_current_line())
+    if not cancelled then
+        vim.notify(cancel_refusal(why, true), vim.log.levels.WARN)
+        return
+    end
+    vim.api.nvim_buf_set_lines(0, lineno - 1, lineno, false, { cancelled })
+end
+
+--- Cancel a single task in a note on disk, or reopen it if already cancelled.
+--- Refuses to touch a file whose buffer has unsaved changes.
+--- @param path string absolute path to the note
+--- @param lineno number 1-indexed line holding the checkbox
+--- @return boolean true when the line was rewritten
+function M.cancel_at(path, lineno)
+    if type(lineno) ~= "number" or lineno < 1 or vim.fn.filereadable(path) == 0 then
+        return false
+    end
+
+    local bufnr = vim.fn.bufnr(path)
+    if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) and vim.bo[bufnr].modified then
+        vim.notify("[Fzfkasten] Buffer has unsaved changes: " .. path, vim.log.levels.WARN)
+        return false
+    end
+
+    local ok, lines = pcall(vim.fn.readfile, path)
+    if not ok or not lines[lineno] then
+        return false
+    end
+
+    local cancelled, why = cancel_line(lines[lineno])
+    if not cancelled then
+        vim.notify(cancel_refusal(why, false), vim.log.levels.WARN)
+        return false
+    end
+
+    lines[lineno] = cancelled
+    vim.fn.writefile(lines, path)
+    if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
+        vim.schedule(function()
+            pcall(vim.cmd, "checktime " .. bufnr)
+        end)
+    end
+    return true
 end
 
 --- Tag the current line -- or every line in a range -- as a task, promoting
@@ -634,11 +821,9 @@ function M.pick(opts)
             ["--delimiter"] = ":",
             ["--with-nth"] = "3..",
             ["--no-sort"] = "",
-            ["--header"] = config.options.tasks.require_tag
-                and (opts.inbox
-                    and ("<ctrl-t> tag as task   <ctrl-x> mark done")
-                    or "<ctrl-x> mark done")
-                or "<ctrl-x> mark done",
+            ["--header"] = config.options.tasks.require_tag and opts.inbox
+                and "<ctrl-t> tag as task   <ctrl-x> mark done   <ctrl-d> cancel"
+                or "<ctrl-x> mark done   <ctrl-d> cancel",
         },
         actions = {
             ['default'] = open,
@@ -664,6 +849,19 @@ function M.pick(opts)
                     -- and 0 is truthy in Lua.
                     if entry.path and (entry.line or 0) > 0 then
                         M.toggle_at(entry.path, entry.line)
+                    end
+                end,
+                reload = true,
+            },
+            -- Drop a task without deleting the line: it leaves the list the
+            -- same way a completed one does, and the note still says you
+            -- once meant to do it.
+            ['ctrl-d'] = {
+                fn = function(selected)
+                    if not selected or #selected == 0 then return end
+                    local entry = fzf.path.entry_to_file(selected[1], { cwd = config.options.home })
+                    if entry.path and (entry.line or 0) > 0 then
+                        M.cancel_at(entry.path, entry.line)
                     end
                 end,
                 reload = true,
