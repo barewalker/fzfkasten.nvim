@@ -12,3 +12,5 @@ COMMANDS
 - FzfKastenTasks: Pick an open `- [ ]` task and jump to it. <ctrl-x> marks it done.
 - FzfKastenTaskToggle: Toggle the checkbox on the current line.
 - FzfKastenTaskInbox: Triage checkboxes not tagged as tasks. <ctrl-t> tags one.
+- FzfKastenTaskTag: Tag the current line as a task, making it a checkbox first
+  if it isn't one. Takes a range, so a selection is tagged in one go.

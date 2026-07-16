@@ -205,6 +205,8 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
 
 *   **`:FzfKastenTaskInbox`**: Lists the checkboxes that `tasks.require_tag` leaves out, so you can triage them. See [Tasks](#tasks).
 
+*   **`:FzfKastenTaskTag`**: Tags the current line as a task, turning prose or a bare bullet into a checkbox on the way. Takes a range, so a visual selection is tagged in one go. See [Tasks](#tasks).
+
 *   **Other existing commands:** (e.g., `:FzfKastenDaily`, `:FzfKastenWeekly`, `:FzfKastenFindNotes`, `:FzfKastenTags`, `:FzfKastenInsert`, etc.)
 
 ### Following links to non-existing notes
@@ -292,6 +294,7 @@ tasks = {
     due = "due:(%d%d%d%d%-%d%d%-%d%d)",
   },
   marks = { open = " ", done = "x" },  -- what `toggle` writes into the mark
+  new_checkbox = "- [ ] ",  -- literal `:FzfKastenTaskTag` puts in front of prose
   require_tag = nil,  -- e.g. "todo": only #todo checkboxes are tasks
   done_stamp = {      -- written on completion, removed on reopen; nil disables
     format = " done:%Y-%m-%d %H:%M",
@@ -319,6 +322,18 @@ tasks = { require_tag = "todo" }   -- only `- [ ] ... #todo` is a task of mine
 Tagging is a decision, not bookkeeping: writing `#todo` is the moment you accept the work. That is why the tag beats guessing from shape — "parenthesis means owner" looks tempting until you meet `- [ ] (A) ship it`, `- [ ] fix the workflow (repairs)` and `- [ ] submit (due May)`, all parentheses and none an owner.
 
 The obvious risk is forgetting the tag, so nothing is thrown away for lacking one. **`:FzfKastenTaskInbox` lists exactly the checkboxes `require_tag` left out.** Triage there with `<ctrl-t>`: the entry is tagged in its note and moves straight to the task list, cursor still in place, so a run of them takes one keypress each. An untagged task is waiting, not lost — which is what makes it safe to require the tag at all.
+
+The inbox catches what you missed, but the cheaper moment is while you are still writing. **`:FzfKastenTaskTag` raises the line under the cursor to a task**, and it starts from wherever the line already is:
+
+```markdown
+send the quote           → - [ ] send the quote #todo
+- send the quote         → - [ ] send the quote #todo
+- [ ] send the quote     → - [ ] send the quote #todo
+```
+
+Realising mid-sentence that a line is yours to do is the moment to say so, and prose is where that realisation lands — so the command bullets it, boxes it and tags it in one keystroke rather than three edits. It takes a range, which is what makes an old note tractable: select the meeting minutes you never triaged and `:'<,'>FzfKastenTaskTag` the lot.
+
+It edits the buffer, not the file, so it works mid-edit on unsaved text — unlike the inbox's `<ctrl-t>`, which reaches into a note you may not have open. What it will not do is write a task the list would never show: headings, frontmatter, fenced examples and (under `scope = "headings"`) anything outside a task section are left alone, because the same rules that decide what `:FzfKastenTasks` scans decide what this tags. A key that silently writes an invisible task would be worse than no key.
 
 A tag you have to remember is a tag you will forget, so put it in the template you already type. With [LuaSnip](https://github.com/L3MON4D3/LuaSnip), a checkbox snippet that emits the tag costs nothing at the keyboard:
 
@@ -358,6 +373,8 @@ local done = require("fzfkasten").collect_tasks({ done = true })
 - `open` and `done` decide what each line is, and capture the task's text.
 - `toggle` captures `(before)(mark)(after)` around the mark, and `marks` says what to write into it.
 
+`new_checkbox` has to be redefined alongside them for the same reason `scan` does: it is the literal `:FzfKastenTaskTag` writes in front of prose, and a pattern matches many strings without saying which one to produce.
+
 Taken together, they let you use a different notation end to end:
 
 ```lua
@@ -370,6 +387,8 @@ tasks = {
     priority = "^%[(%u)%]%s+",               -- - ( ) [A] buy milk
     due = "due:(%d%d%d%d%-%d%d%-%d%d)",
   },
+  marks = { open = " ", done = "x" },
+  new_checkbox = "- ( ) ",                   -- what `:FzfKastenTaskTag` writes
 }
 ```
 
