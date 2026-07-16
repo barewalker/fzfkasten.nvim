@@ -412,6 +412,52 @@ function M.toggle_at(path, lineno)
     return true
 end
 
+--- Append `require_tag` to a checkbox, promoting an inbox entry to a task.
+--- Without it the inbox would be a dead end: you could see what escaped, but
+--- only fix it by hand.
+--- @param path string absolute path to the note
+--- @param lineno number 1-indexed line holding the checkbox
+--- @return boolean true when the tag was added
+function M.tag_at(path, lineno)
+    local tag = config.options.tasks.require_tag
+    if not tag then
+        vim.notify("[Fzfkasten] tasks.require_tag is not set.", vim.log.levels.WARN)
+        return false
+    end
+    if type(lineno) ~= "number" or lineno < 1 or vim.fn.filereadable(path) == 0 then
+        return false
+    end
+
+    local bufnr = vim.fn.bufnr(path)
+    if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) and vim.bo[bufnr].modified then
+        vim.notify("[Fzfkasten] Buffer has unsaved changes: " .. path, vim.log.levels.WARN)
+        return false
+    end
+
+    local ok, lines = pcall(vim.fn.readfile, path)
+    if not ok or not lines[lineno] then
+        return false
+    end
+    local line = lines[lineno]
+    if not line:match(config.options.tasks.patterns.open)
+        and not line:match(config.options.tasks.patterns.done) then
+        vim.notify("[Fzfkasten] No task on that line.", vim.log.levels.WARN)
+        return false
+    end
+    if has_tag(line, tag) then
+        return false -- already a task; nothing to do
+    end
+
+    lines[lineno] = line:gsub("%s*$", "") .. " #" .. tag
+    vim.fn.writefile(lines, path)
+    if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
+        vim.schedule(function()
+            pcall(vim.cmd, "checktime " .. bufnr)
+        end)
+    end
+    return true
+end
+
 --- Toggle the checkbox on the current line of the current buffer.
 function M.toggle()
     local lineno = vim.api.nvim_win_get_cursor(0)[1]
@@ -479,10 +525,25 @@ function M.pick(opts)
             ["--delimiter"] = ":",
             ["--with-nth"] = "3..",
             ["--no-sort"] = "",
-            ["--header"] = "<ctrl-x> mark done",
+            ["--header"] = config.options.tasks.require_tag
+                and (opts.inbox
+                    and ("<ctrl-t> tag as task   <ctrl-x> mark done")
+                    or "<ctrl-x> mark done")
+                or "<ctrl-x> mark done",
         },
         actions = {
             ['default'] = open,
+            -- Promote an inbox entry: tag it, and it moves to the task list.
+            ['ctrl-t'] = {
+                fn = function(selected)
+                    if not selected or #selected == 0 then return end
+                    local entry = fzf.path.entry_to_file(selected[1], { cwd = config.options.home })
+                    if entry.path and (entry.line or 0) > 0 then
+                        M.tag_at(entry.path, entry.line)
+                    end
+                end,
+                reload = true,
+            },
             -- `reload` re-runs `contents` in place: fzf keeps the cursor index,
             -- so the task below the one just completed moves up under it and
             -- you can work down the list without losing your place.

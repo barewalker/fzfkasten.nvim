@@ -239,6 +239,7 @@ Priority `(A)` and `due:YYYY-MM-DD` are optional; tasks sort by priority, then b
 |---|---|
 | `<enter>` | Open the note at the task's line |
 | `<ctrl-x>` | Mark done in the note; the list refreshes in place |
+| `<ctrl-t>` | Add `require_tag`, promoting an inbox entry to a task |
 
 ### Choosing what counts as a task
 
@@ -317,7 +318,13 @@ tasks = { require_tag = "todo" }   -- only `- [ ] ... #todo` is a task of mine
 
 Tagging is a decision, not bookkeeping: writing `#todo` is the moment you accept the work. That is why the tag beats guessing from shape — "parenthesis means owner" looks tempting until you meet `- [ ] (A) ship it`, `- [ ] fix the workflow (repairs)` and `- [ ] submit (due May)`, all parentheses and none an owner.
 
-The obvious risk is forgetting the tag, so nothing is thrown away for lacking one. **`:FzfKastenTaskInbox` lists exactly the checkboxes `require_tag` left out.** Triage there: jump to one, tag it, and it joins the list. An untagged task is waiting, not lost — which is what makes it safe to require the tag at all.
+The obvious risk is forgetting the tag, so nothing is thrown away for lacking one. **`:FzfKastenTaskInbox` lists exactly the checkboxes `require_tag` left out.** Triage there with `<ctrl-t>`: the entry is tagged in its note and moves straight to the task list, cursor still in place, so a run of them takes one keypress each. An untagged task is waiting, not lost — which is what makes it safe to require the tag at all.
+
+A tag you have to remember is a tag you will forget, so put it in the template you already type. With [LuaSnip](https://github.com/L3MON4D3/LuaSnip), a checkbox snippet that emits the tag costs nothing at the keyboard:
+
+```lua
+s("todo", fmt("- [ ] <> #todo", { i(0) }, { delimiters = "<>" }))
+```
 
 Leave `require_tag` unset and every checkbox is a task, with no inbox to keep.
 
