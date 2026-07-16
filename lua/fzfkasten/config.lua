@@ -56,9 +56,11 @@ M.defaults = {
    -- Directories (relative to `home`) skipped entirely.
    dirs = { "templates" },
   },
-  -- Ignore tasks in notes older than this many days; nil scans everything.
-  -- Useful once old notes carry tasks you'll never revisit. Notes whose date
-  -- can't be determined are never aged out -- see `date_keys` / `date`.
+  -- Ignore checkboxes in notes older than this many days; nil scans
+  -- everything. Notes whose date can't be determined are never aged out --
+  -- see `date_keys` / `date`. With `require_tag` set this bounds the inbox
+  -- only: a tagged task never ages out, since expiring your own decision
+  -- would drop it from the task list and the inbox both.
   since_days = nil,
   -- A note's date is read from its filename, then these frontmatter keys.
   -- mtime is deliberately not used: git rewrites it on checkout, so it says

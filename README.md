@@ -375,11 +375,13 @@ tasks = {
 
 Note `scan = false` rather than `nil`: `setup()` merges your table over the defaults, so a `nil` leaves the default in place. The same applies to any other option you want to switch off.
 
-`since_days` earns its keep once your notes are a few years deep: old notes carry tasks you'll never revisit, and they drown the ones you will. Pair it with `always` for a standing list that shouldn't age out:
+`since_days` earns its keep once your notes are a few years deep: old notes carry checkboxes you'll never revisit, and they drown the ones you will. Pair it with `always` for a standing list that shouldn't age out:
 
 ```lua
 tasks = { since_days = 60, always = { "tasks/active.md" } }
 ```
+
+**With `require_tag` set, `since_days` bounds the inbox only — a tagged task never ages out.** Tagging it was a decision, and expiring that by date would drop it from the task list *and* from the inbox, leaving it in neither. `since_days` is there to keep old untriaged checkboxes from drowning the inbox, not to overrule you.
 
 ### How a note is dated
 

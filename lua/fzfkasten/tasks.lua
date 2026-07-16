@@ -285,9 +285,14 @@ function M.collect(opts)
                 local date = note_date(path, lines, fm)
                 -- A note with no date is never aged out: dropping tasks we
                 -- can't date would hide them with no way to notice.
-                local too_old = cutoff and date and date < cutoff and not is_always(rel)
+                local aged_out = cutoff and date and date < cutoff and not is_always(rel)
+                -- With `require_tag`, an old note can still hold tasks you
+                -- tagged, so it has to be read; only its untagged checkboxes
+                -- age out. Without it, every checkbox is a task and an old
+                -- note has nothing left to offer.
+                local skip_note = opted_out or (aged_out and not o.require_tag)
 
-                if not opted_out and not too_old then
+                if not skip_note then
                     local in_scope = (o.scope ~= "headings")
                     local fence = nil
                     for lineno = fm_end + 1, #lines do
@@ -330,7 +335,14 @@ function M.collect(opts)
                                     -- With `require_tag` set, a checkbox is a
                                     -- task only if tagged; the rest are inbox.
                                     local tagged = not o.require_tag or has_tag(text, o.require_tag)
-                                    if tagged == wants_tagged and keep(task) then
+                                    -- A tagged task never ages out. Tagging it
+                                    -- was a decision; expiring it by date would
+                                    -- hide work that was explicitly accepted,
+                                    -- and it would fall out of the inbox too --
+                                    -- invisible in both views. `since_days`
+                                    -- bounds the inbox, not your commitments.
+                                    if not (aged_out and not tagged)
+                                        and tagged == wants_tagged and keep(task) then
                                         table.insert(tasks, task)
                                     end
                                 end
