@@ -279,7 +279,7 @@ tasks = {
   -- Lua patterns matched against lowercased heading text (scope = "headings").
   headings = { "^tasks?%f[%A]", "^to%-?dos?%f[%A]", "^タスク", "^やること" },
   ignore = {
-    frontmatter_key = "tasks",  -- `tasks: false` opts a note out; nil disables
+    frontmatter_key = "tasks",  -- `tasks: false` opts a note out; false disables
     dirs = { "templates" },     -- directories (relative to `home`) never scanned
   },
   -- Skip notes older than N days; nil scans everything.
@@ -300,7 +300,7 @@ tasks = {
   marks = { open = " ", done = "x", cancelled = "-" },  -- what `toggle` writes
   new_checkbox = "- [ ] ",  -- literal `:FzfKastenTaskTag` puts in front of prose
   require_tag = nil,  -- e.g. "todo": only #todo checkboxes are tasks
-  done_stamp = {      -- written on completion, removed on reopen; nil disables
+  done_stamp = {      -- written on completion, removed on reopen; false disables
     format = " done:%Y-%m-%d %H:%M",
     pattern = "%s*done:(%d%d%d%d%-%d%d%-%d%d %d%d:%d%d)",
   },
