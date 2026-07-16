@@ -20,6 +20,26 @@ local DAY = 86400
 local date_hook_warned = false
 local filter_hook_warned = false
 
+-- Lines rewritten in notes on disk, newest last, for `M.undo`.
+--
+-- Only the paths that write a file are recorded. The ones that edit a buffer
+-- are Vim's `u` to undo, and a second undo stack over the same edit would
+-- fight it: `u` puts the line back in the buffer, then this would put it back
+-- in the file the buffer no longer agrees with.
+--
+-- Each entry keeps the line as it was and as we left it, so an undo can tell
+-- "still as I left it" from "someone has edited this since" and refuse the
+-- second rather than overwrite work it knows nothing about.
+local history = {}
+local HISTORY_MAX = 50
+
+local function remember(path, lineno, before, after)
+    table.insert(history, { path = path, lineno = lineno, before = before, after = after })
+    if #history > HISTORY_MAX then
+        table.remove(history, 1)
+    end
+end
+
 -- Ask the user's `filter` hook whether to keep a task. A hook that raises
 -- keeps the task: dropping tasks because someone's config threw would hide
 -- work with nothing to show for it.
@@ -583,6 +603,7 @@ function M.toggle_at(path, lineno)
 
     lines[lineno] = toggled
     vim.fn.writefile(lines, path)
+    remember(path, lineno, line, toggled)
     if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
         -- Cosmetic, and this may run from fzf's terminal context, so defer it.
         -- Correctness doesn't depend on it: everything re-reads from disk.
@@ -631,6 +652,7 @@ function M.tag_at(path, lineno)
 
     lines[lineno] = line:gsub("%s*$", "") .. " #" .. tag
     vim.fn.writefile(lines, path)
+    remember(path, lineno, line, lines[lineno])
     if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
         vim.schedule(function()
             pcall(vim.cmd, "checktime " .. bufnr)
@@ -697,7 +719,8 @@ function M.cancel_at(path, lineno)
         return false
     end
 
-    local cancelled, why = cancel_line(lines[lineno])
+    local line = lines[lineno]
+    local cancelled, why = cancel_line(line)
     if not cancelled then
         vim.notify(cancel_refusal(why, false), vim.log.levels.WARN)
         return false
@@ -705,6 +728,7 @@ function M.cancel_at(path, lineno)
 
     lines[lineno] = cancelled
     vim.fn.writefile(lines, path)
+    remember(path, lineno, line, cancelled)
     if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
         vim.schedule(function()
             pcall(vim.cmd, "checktime " .. bufnr)
@@ -765,6 +789,58 @@ function M.tag(opts)
     vim.api.nvim_buf_set_lines(0, line1 - 1, line2, false, lines)
 end
 
+--- Put back the last task line rewritten in a note on disk -- the last
+--- `<ctrl-x>`, `<ctrl-d>` or `<ctrl-t>` from the picker. Repeat to walk back
+--- through them.
+---
+--- This is not Vim's undo and does not touch it: those keys write the note
+--- itself, often without it being open, which is exactly where `u` cannot
+--- reach. Edits you make in a buffer are `u`'s to undo, and are not recorded
+--- here.
+--- @return boolean true when a line was put back
+function M.undo()
+    local last = history[#history]
+    if not last then
+        vim.notify("[Fzfkasten] Nothing to undo.", vim.log.levels.INFO)
+        return false
+    end
+
+    local bufnr = vim.fn.bufnr(last.path)
+    if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) and vim.bo[bufnr].modified then
+        vim.notify("[Fzfkasten] Buffer has unsaved changes: " .. last.path,
+            vim.log.levels.WARN)
+        return false
+    end
+
+    local ok, lines = pcall(vim.fn.readfile, last.path)
+    -- Whatever we were going to undo is not there any more, so drop the entry:
+    -- keeping it would only fail the same way on the next undo.
+    if not ok or not lines[last.lineno] then
+        table.remove(history)
+        vim.notify("[Fzfkasten] That note has changed since; nothing put back.",
+            vim.log.levels.WARN)
+        return false
+    end
+    -- Someone has edited the line since -- possibly the task moved, possibly
+    -- it was rewritten by hand. Their text is worth more than our undo.
+    if lines[last.lineno] ~= last.after then
+        table.remove(history)
+        vim.notify("[Fzfkasten] That line has changed since; left as it is.",
+            vim.log.levels.WARN)
+        return false
+    end
+
+    lines[last.lineno] = last.before
+    vim.fn.writefile(lines, last.path)
+    table.remove(history)
+    if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
+        vim.schedule(function()
+            pcall(vim.cmd, "checktime " .. bufnr)
+        end)
+    end
+    return true
+end
+
 --- Pick the checkboxes `require_tag` leaves out, for triage. Same picker as
 --- `M.pick`; jump to one and tag it to promote it to a task.
 --- @param opts table|nil forwarded to `M.collect`
@@ -822,8 +898,8 @@ function M.pick(opts)
             ["--with-nth"] = "3..",
             ["--no-sort"] = "",
             ["--header"] = config.options.tasks.require_tag and opts.inbox
-                and "<ctrl-t> tag as task   <ctrl-x> mark done   <ctrl-d> cancel"
-                or "<ctrl-x> mark done   <ctrl-d> cancel",
+                and "<ctrl-t> tag as task   <ctrl-x> mark done   <ctrl-d> cancel   <alt-u> undo"
+                or "<ctrl-x> mark done   <ctrl-d> cancel   <alt-u> undo",
         },
         actions = {
             ['default'] = open,
@@ -851,6 +927,13 @@ function M.pick(opts)
                         M.toggle_at(entry.path, entry.line)
                     end
                 end,
+                reload = true,
+            },
+            -- Reach for this the moment a keypress lands on the wrong row:
+            -- the task is gone from the list and `u` cannot help, because
+            -- the note was written, not the buffer.
+            ['alt-u'] = {
+                fn = function() M.undo() end,
                 reload = true,
             },
             -- Drop a task without deleting the line: it leaves the list the

@@ -16,3 +16,5 @@ COMMANDS
   if it isn't one. Takes a range, so a selection is tagged in one go.
 - FzfKastenTaskCancel: Drop the task on the current line -- out of the lists,
   still in the note -- or reopen it if already dropped. <ctrl-d> in the picker.
+- FzfKastenTaskUndo: Put back the last task line the picker rewrote. <alt-u>
+  in the picker. Not Vim's undo: edits you make in a buffer are `u`'s.
