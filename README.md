@@ -209,6 +209,8 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
 
 *   **`:FzfKastenTaskCancel`**: Drops the task on the current line — out of the lists, still in the note — or reopens it if it is already dropped. See [Tasks](#tasks).
 
+*   **`:FzfKastenTaskUndo`**: Puts back the last task line the picker rewrote. Repeat to walk back through them. See [Tasks](#tasks).
+
 *   **Other existing commands:** (e.g., `:FzfKastenDaily`, `:FzfKastenWeekly`, `:FzfKastenFindNotes`, `:FzfKastenTags`, `:FzfKastenInsert`, etc.)
 
 ### Following links to non-existing notes
@@ -245,6 +247,7 @@ Priority `(A)` and `due:YYYY-MM-DD` are optional; tasks sort by priority, then b
 | `<ctrl-x>` | Mark done in the note; the list refreshes in place |
 | `<ctrl-d>` | Drop the task: out of the list, still in the note |
 | `<ctrl-t>` | Add `require_tag`, promoting an inbox entry to a task |
+| `<alt-u>` | Put back the last line any of these rewrote |
 
 ### Choosing what counts as a task
 
@@ -385,6 +388,16 @@ It leaves the task list the same way a completed one does, and the same command 
 The strikethrough is decoration, and the mark is the state — `marks.cancelled` alone decides, and if a stray `~~` disagrees the mark wins. It is there because `[-]` is not a checkbox to GitHub or a phone's markdown viewer, which show it as literal text; struck-through text still reads as dropped wherever the note is read, which matters when the notes are synced and read outside Neovim. Set `cancel_strike = false` for the mark alone — `false` rather than `nil`, for the reason described under [Redefining the syntax](#redefining-the-syntax).
 
 Note where the wrap sits: **inside the priority, outside the stamp.** `patterns.priority` is anchored to the start of the task's text, so `~~(A) redraw~~` would hide the `(A)` for as long as the task stayed cancelled — and the cancelling is not itself cancelled, so the stamp stays out of the strike too.
+
+### Undoing a keypress in the picker
+
+`<ctrl-x>` on the wrong row is easy: the task is done, the list refreshes, and the row you meant is now where your cursor is. **`<alt-u>` puts the line back**, once per keypress, walking back through `<ctrl-x>`, `<ctrl-d>` and `<ctrl-t>` alike. `:FzfKastenTaskUndo` does the same after you have closed the picker.
+
+**Vim's `u` cannot do this, and looks like it can.** The picker writes the note, not a buffer — usually a note you don't even have open. When you do have it open, `u` rolls the buffer back and leaves the note on disk as it was, so the task list still shows it done, the buffer now disagrees with the file, and nothing says why. That gap is what this key is for.
+
+Edits you make in a note yourself — `:FzfKastenTaskToggle`, `:FzfKastenTaskCancel`, `:FzfKastenTaskTag` — are `u`'s to undo, as any edit is, and are deliberately not recorded here. Two undo stacks over one edit would fight: `u` would put the line back in the buffer and this would put it back in the file the buffer no longer agrees with.
+
+An undo that would overwrite an edit made since is refused rather than forced through. If the line has changed — by hand, from your phone, by anything — it says so and leaves it alone; your text is worth more than the undo.
 
 To review what you finished, ask for completed tasks and read their stamps:
 
