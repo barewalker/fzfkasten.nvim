@@ -51,7 +51,8 @@ M.defaults = {
   headings = { "^tasks?%f[%A]", "^to%-?dos?%f[%A]", "^タスク", "^やること" },
   ignore = {
    -- Frontmatter key that opts a whole note out when falsy (`tasks: false`).
-   -- Set to nil to disable the mechanism.
+   -- Set to `false` to disable the mechanism -- not nil, which setup() would
+   -- merge away, leaving this default in place.
    frontmatter_key = "tasks",
    -- Directories (relative to `home`) skipped entirely.
    dirs = { "templates" },
@@ -110,7 +111,8 @@ M.defaults = {
   -- Written when a task is completed and removed when it is reopened, so you
   -- can answer "what did I finish last week". `format` is an os.date format;
   -- `pattern` must match what `format` writes (its capture becomes
-  -- `task.done_at`) so the stamp can be stripped again. nil writes nothing.
+  -- `task.done_at`) so the stamp can be stripped again. `false` writes
+  -- nothing -- not nil, which setup() would merge away.
   --
   -- The checkbox stays the single source of truth for done-ness -- the stamp
   -- only records when. Keeping state in a tag instead would desync the moment
