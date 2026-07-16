@@ -33,7 +33,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **Filename Sanitization**: Unicode-safe default (preserves CJK) with a user-overridable `transform.sanitize_filename` hook.
 - [x] **Template Placeholders**: Built-in `{{title}} {{date}} {{hdate}} {{year}} {{month}} {{day}} {{week}} {{time}}` plus user-defined entries via `template_placeholders` (string or function values).
 - [x] **Image Preview**: Delegated to `fzf-lua`'s previewer; see the [Image Preview](#image-preview) section for configuration.
-- [x] **Tasks**: Collect `- [ ]` checkboxes across every note, jump to the one you pick, and tick it off without leaving the picker. No index, no task file — see [Tasks](#tasks).
+- [x] **Tasks**: Collect `- [ ]` checkboxes across every note, jump to the one you pick, and tick it off without leaving the picker. Mark which checkboxes are yours with a tag, and triage the rest from an inbox. No index, no task file — see [Tasks](#tasks).
 
 ## Installation
 
@@ -201,7 +201,9 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
 
 *   **`:FzfKastenTasks`**: Lists every open `- [ ]` checkbox across your notes. Pick one to jump to that line in its note; press `<ctrl-x>` to mark it done in the note itself. See [Tasks](#tasks).
 
-*   **`:FzfKastenTaskToggle`**: Toggles the checkbox on the current line between `- [ ]` and `- [x]`.
+*   **`:FzfKastenTaskToggle`**: Toggles the checkbox on the current line between `- [ ]` and `- [x]`, stamping the completion time.
+
+*   **`:FzfKastenTaskInbox`**: Lists the checkboxes that `tasks.require_tag` leaves out, so you can triage them. See [Tasks](#tasks).
 
 *   **Other existing commands:** (e.g., `:FzfKastenDaily`, `:FzfKastenWeekly`, `:FzfKastenFindNotes`, `:FzfKastenTags`, `:FzfKastenInsert`, etc.)
 
@@ -289,30 +291,57 @@ tasks = {
     due = "due:(%d%d%d%d%-%d%d%-%d%d)",
   },
   marks = { open = " ", done = "x" },  -- what `toggle` writes into the mark
+  require_tag = nil,  -- e.g. "todo": only #todo checkboxes are tasks
+  done_stamp = {      -- written on completion, removed on reopen; nil disables
+    format = " done:%Y-%m-%d %H:%M",
+    pattern = "%s*done:(%d%d%d%d%-%d%d%-%d%d %d%d:%d%d)",
+  },
   filter = nil,  -- function(task) -> boolean; false drops the task
   on_collect = nil,  -- function(tasks) called after each collect
 }
 ```
 
-### Whose task is it?
+### Whose task is it? — `require_tag` and the inbox
 
-Meeting notes record action items for other people, and you probably don't want those in your list. There's no reliable way for fzfkasten to tell them apart — how you mark an owner is a convention of your notes, and often of your workplace — so `filter` decides:
+Not every checkbox in your notes is a job for you. Meeting minutes record action items for other people; a spec's acceptance criteria are checkboxes that are nobody's task. `require_tag` settles it by asking you to say so:
 
 ```lua
-tasks = {
-  filter = function(task)
-    -- "- [ ] revise the manual (Alice)" is Alice's job, not mine
-    for _, name in ipairs({ "Alice", "Bob" }) do
-      if task.text:find("(" .. name, 1, true) then return false end
-    end
-    return true
-  end,
-}
+tasks = { require_tag = "todo" }   -- only `- [ ] ... #todo` is a task of mine
 ```
 
-Prefer naming the people you want to exclude over guessing from shape. "Parenthesis means owner" looks tempting until you meet `- [ ] (A) ship it`, `- [ ] fix the workflow (repairs)`, and `- [ ] submit (due May)` — all parentheses, none an owner.
+```markdown
+## Minutes
+- [ ] revise the manual (Alice)      → not mine, never in my list
+- [ ] send the quote #todo           → mine
+```
 
-`filter` runs on every task with everything parsed, so it can key off `due`, `priority`, `rel`, `date` or `done` just as well. Return `false` to drop; anything else keeps. A `filter` that raises keeps the task and warns once — losing work to a config error would be the worse failure.
+Tagging is a decision, not bookkeeping: writing `#todo` is the moment you accept the work. That is why the tag beats guessing from shape — "parenthesis means owner" looks tempting until you meet `- [ ] (A) ship it`, `- [ ] fix the workflow (repairs)` and `- [ ] submit (due May)`, all parentheses and none an owner.
+
+The obvious risk is forgetting the tag, so nothing is thrown away for lacking one. **`:FzfKastenTaskInbox` lists exactly the checkboxes `require_tag` left out.** Triage there: jump to one, tag it, and it joins the list. An untagged task is waiting, not lost — which is what makes it safe to require the tag at all.
+
+Leave `require_tag` unset and every checkbox is a task, with no inbox to keep.
+
+For anything the tag can't express, `filter` runs on every task with everything parsed, so it can key off `due`, `priority`, `rel`, `date` or `done`. Return `false` to drop; anything else keeps. A `filter` that raises keeps the task and warns once — losing work to a config error would be the worse failure.
+
+### Recording when you finished
+
+`done_stamp` writes the time into the line as a task is completed, and removes it if the task is reopened:
+
+```markdown
+- [ ] send the quote #todo @work due:2026-07-20
+      ↓ <ctrl-x> in the picker, or :FzfKastenTaskToggle on the line
+- [x] send the quote #todo @work due:2026-07-20 done:2026-07-16 14:32
+```
+
+`format` is an `os.date` format and `pattern` must match what it writes, capturing the timestamp — that capture becomes `task.done_at`, and it is how the stamp gets stripped again. Set `done_stamp = false` to write nothing.
+
+The stamp records *when*, never *whether*: **the checkbox stays the only source of done-ness.** It is tempting to keep the state in a tag instead — `#todo` becoming `#done` — but any other editor ticking the box knows nothing about your tags, and then the box says done while the tag says open, with no way to tell which is right. One state, one place.
+
+To review what you finished, ask for completed tasks and read their stamps:
+
+```lua
+local done = require("fzfkasten").collect_tasks({ done = true })
+```
 
 ### Redefining the syntax
 

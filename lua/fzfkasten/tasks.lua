@@ -182,14 +182,28 @@ local function is_always(rel)
     return false
 end
 
--- Pull `(A)` and `due:YYYY-MM-DD` out of the task text.
-local function parse_task_text(text, pats)
-    local priority = text:match(pats.priority)
+-- Does `text` carry `#<tag>`? The frontier stops `#todo` matching `#todos`.
+local function has_tag(text, tag)
+    return text:find("#" .. vim.pesc(tag) .. "%f[%W]") ~= nil
+end
+
+-- Pull `(A)`, `due:YYYY-MM-DD` and the completion stamp out of the task text.
+local function parse_task_text(text, o)
+    local priority = text:match(o.patterns.priority)
     if priority then
-        text = text:gsub(pats.priority, "", 1)
+        text = text:gsub(o.patterns.priority, "", 1)
     end
-    local due = text:match(pats.due)
-    return vim.trim(text), priority, due
+    local due = text:match(o.patterns.due)
+
+    local done_at
+    local stamp = o.done_stamp
+    if stamp and stamp.pattern then
+        done_at = text:match(stamp.pattern)
+        if done_at then
+            text = text:gsub(stamp.pattern, "")
+        end
+    end
+    return vim.trim(text), priority, due, done_at
 end
 
 -- Flip a checkbox line, or nil when the line holds no checkbox. Driven by
@@ -197,11 +211,24 @@ end
 -- redefines the checkbox syntax keeps toggling.
 local function toggle_line(line)
     local o = config.options.tasks
+    local now_done
     local toggled, n = line:gsub(o.patterns.toggle, function(before, mark, after)
-        return before .. (mark == o.marks.open and o.marks.done or o.marks.open) .. after
+        now_done = mark == o.marks.open
+        return before .. (now_done and o.marks.done or o.marks.open) .. after
     end, 1)
     if n == 0 then
         return nil
+    end
+
+    local stamp = o.done_stamp
+    if stamp and stamp.format and stamp.pattern then
+        -- Drop any existing stamp first, so reopening leaves no trace and
+        -- completing twice doesn't accumulate them.
+        toggled = toggled:gsub(stamp.pattern, "")
+        toggled = toggled:gsub("%s+$", "")
+        if now_done then
+            toggled = toggled .. os.date(stamp.format)
+        end
     end
     return toggled
 end
@@ -226,13 +253,17 @@ local function sort_tasks(tasks)
 end
 
 --- Collect tasks from every note under `home`.
---- @param opts table|nil `{ since_days = number|false, done = boolean }`.
----   `since_days = false` disables the date window for this call.
---- @return table list of `{ text, done, priority, due, path, rel, lineno, date }`
+--- @param opts table|nil `{ since_days = number|false, done = boolean,
+---   inbox = boolean }`. `since_days = false` disables the date window for this
+---   call; `inbox = true` returns the checkboxes `require_tag` leaves out.
+--- @return table list of
+---   `{ text, done, done_at, priority, due, path, rel, lineno, date }`
 function M.collect(opts)
     opts = opts or {}
     local o = config.options.tasks
     local home = config.options.home
+    -- `inbox` asks for the complement: checkboxes without the tag.
+    local wants_tagged = not opts.inbox
 
     local since = opts.since_days
     if since == nil then
@@ -284,10 +315,11 @@ function M.collect(opts)
                                     done = raw ~= nil
                                 end
                                 if raw then
-                                    local text, priority, due = parse_task_text(raw, o.patterns)
+                                    local text, priority, due, done_at = parse_task_text(raw, o)
                                     local task = {
                                         text = text,
                                         done = done,
+                                        done_at = done_at,
                                         priority = priority,
                                         due = due,
                                         path = path,
@@ -295,7 +327,10 @@ function M.collect(opts)
                                         lineno = lineno,
                                         date = date,
                                     }
-                                    if keep(task) then
+                                    -- With `require_tag` set, a checkbox is a
+                                    -- task only if tagged; the rest are inbox.
+                                    local tagged = not o.require_tag or has_tag(text, o.require_tag)
+                                    if tagged == wants_tagged and keep(task) then
                                         table.insert(tasks, task)
                                     end
                                 end
@@ -321,8 +356,15 @@ end
 -- "rel:lineno: (A) text  [due ...]" -- the same shape show_backlinks uses, so
 -- fzf-lua's entry_to_file parses it with `cwd = home`.
 local function to_entry(task)
+    local o = config.options.tasks
     local prefix = task.priority and string.format("(%s) ", task.priority) or ""
-    local text = task.text:gsub(config.options.tasks.patterns.due, "")
+    local text = task.text:gsub(o.patterns.due, "")
+    -- Every task carries `require_tag`, so showing it wastes width.
+    if o.require_tag then
+        text = text:gsub("#" .. vim.pesc(o.require_tag) .. "%f[%W]", "")
+    end
+    text = " " .. text .. " "
+    text = text:gsub("%s+", " ")
     local due = task.due and string.format("  [due %s]", task.due) or ""
     return string.format("%s:%d: %s%s%s", task.rel, task.lineno, prefix, vim.trim(text), due)
 end
@@ -381,13 +423,29 @@ function M.toggle()
     vim.api.nvim_buf_set_lines(0, lineno - 1, lineno, false, { toggled })
 end
 
+--- Pick the checkboxes `require_tag` leaves out, for triage. Same picker as
+--- `M.pick`; jump to one and tag it to promote it to a task.
+--- @param opts table|nil forwarded to `M.collect`
+function M.inbox(opts)
+    if not config.options.tasks.require_tag then
+        vim.notify(
+            "[Fzfkasten] The inbox needs tasks.require_tag set; without it "
+            .. "every checkbox is already a task.",
+            vim.log.levels.WARN
+        )
+        return
+    end
+    M.pick(vim.tbl_extend("force", opts or {}, { inbox = true }))
+end
+
 --- Pick an open task and jump to it in its source note.
 --- `<ctrl-x>` marks the task done in its note and refreshes the list in place.
 --- @param opts table|nil forwarded to `M.collect`
 function M.pick(opts)
     opts = opts or {}
     if #M.collect(opts) == 0 then
-        vim.notify("No open tasks found.", vim.log.levels.INFO)
+        vim.notify(opts.inbox and "Inbox is empty." or "No open tasks found.",
+            vim.log.levels.INFO)
         return
     end
 
@@ -412,7 +470,7 @@ function M.pick(opts)
     end
 
     fzf.fzf_exec(contents, vim.tbl_deep_extend("force", config.options.fzf, {
-        prompt = "Tasks> ",
+        prompt = opts.inbox and "Inbox> " or "Tasks> ",
         -- Entries carry paths relative to `home`; without this the previewer
         -- resolves them against Neovim's cwd and fails to stat the note.
         cwd = config.options.home,
