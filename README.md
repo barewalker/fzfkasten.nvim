@@ -562,6 +562,26 @@ require("fzfkasten").setup({
 
 Plain-text preview (Markdown syntax highlighting) works out of the box with `previewer = "builtin"` and requires no extra setup.
 
+## Development
+
+The task engine rewrites checkboxes in your notes in place — wrapping a strike
+inside a priority, stamping a completion, stripping it again on reopen. That
+string surgery is easy to get subtly wrong, so its pure helpers are pinned down
+by a test suite under `tests/`, run with
+[plenary.nvim](https://github.com/nvim-lua/plenary.nvim)'s busted harness.
+
+Run it headlessly (needs `plenary.nvim` and `fzf-lua` installed wherever your
+plugin manager keeps them):
+
+```sh
+nvim --headless --noplugin -u tests/minimal_init.lua \
+  -c "PlenaryBustedDirectory tests/ { minimal_init = 'tests/minimal_init.lua' }"
+```
+
+or, with `make` available, simply `make test`. A green run exits 0; a failing
+assertion prints the file, line and diff and exits 1, so it drops straight into
+CI or a pre-commit hook.
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
