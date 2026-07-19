@@ -420,6 +420,49 @@ local function tag_line(line, tag)
     return line:gsub("%s*$", "") .. " #" .. tag
 end
 
+-- Is `date` an absolute due date we will write? An ISO day, or a day with an
+-- ISO HH:MM time. No relative forms, no seconds, no timezone: the writer's
+-- output is the on-disk contract, so it stays exactly what `patterns.due`
+-- reads back. Calendar validity (no 2026-02-30) is not checked -- the shape is,
+-- same as everywhere else the syntax is matched rather than parsed.
+local function valid_due(date)
+    return date:match("^%d%d%d%d%-%d%d%-%d%d$") ~= nil
+        or date:match("^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d$") ~= nil
+end
+
+-- Set, replace or clear the `due:` on an open task. Returns the rewritten line,
+-- or nil plus a reason.
+--
+-- A done or cancelled task is refused: a due date is when something still needs
+-- doing, which a finished or dropped task no longer does. Refusing keeps the
+-- writer from leaving a due date on a line no list would ever surface it from.
+--
+-- The token goes at the end of the text, past the priority and the tag, so it
+-- reads the way the notes already write it (`(A) redraw #todo due:...`). An
+-- empty date clears it, leaving no dangling space.
+local function due_line(line, date)
+    local o = config.options.tasks
+    local cb = split_checkbox(line)
+    if not cb then
+        return nil, "no checkbox"
+    end
+    if cb.mark ~= o.marks.open then
+        return nil, "not open"
+    end
+    date = date and vim.trim(date) or ""
+
+    -- Strip any existing due, its leading space and all, so setting is
+    -- idempotent and clearing leaves the line as if it never had one.
+    local stripped = line:gsub("%s*" .. o.patterns.due, ""):gsub("%s+$", "")
+    if date == "" then
+        return stripped
+    end
+    if not valid_due(date) then
+        return nil, "bad date"
+    end
+    return stripped .. " due:" .. date
+end
+
 local function sort_tasks(tasks)
     table.sort(tasks, function(a, b)
         -- Prioritised first, then most urgent, then stable by location.
@@ -685,6 +728,44 @@ local function cancel_refusal(why, here)
             .. "if you meant to cancel it."
     end
     return "[Fzfkasten] No checkbox on " .. (here and "this" or "that") .. " line."
+end
+
+-- Why `due_line` refused, in words.
+local function due_refusal(why)
+    if why == "not open" then
+        return "[Fzfkasten] That task isn't open; a due date is for something "
+            .. "still to do."
+    elseif why == "bad date" then
+        return "[Fzfkasten] Expected a date like 2026-07-25 or 2026-07-25T15:00."
+    end
+    return "[Fzfkasten] No checkbox on this line."
+end
+
+--- Set, replace or clear the due date on the task on the current line. With no
+--- argument the due date is cleared; otherwise it must be an absolute ISO date
+--- (`2026-07-25`) or date and time (`2026-07-25T15:00`).
+---
+--- Edits the buffer, not the file: this runs while you are writing the note,
+--- so it is Vim's `u` that undoes it, like `M.tag`.
+--- @param date string|nil the new due date, or nil/"" to clear
+function M.set_due(date)
+    local lineno = vim.api.nvim_win_get_cursor(0)[1]
+    local cur = vim.api.nvim_get_current_line()
+    local out, why = due_line(cur, date)
+    if not out then
+        vim.notify(due_refusal(why), vim.log.levels.WARN)
+        return
+    end
+    if out == cur then
+        vim.notify(
+            (date == nil or vim.trim(date) == "")
+                and "[Fzfkasten] No due date to clear."
+                or "[Fzfkasten] Due date unchanged.",
+            vim.log.levels.INFO
+        )
+        return
+    end
+    vim.api.nvim_buf_set_lines(0, lineno - 1, lineno, false, { out })
 end
 
 --- Cancel the task on the current line, or reopen it if already cancelled.
@@ -964,6 +1045,8 @@ M._test = {
     toggle_line = toggle_line,
     cancel_line = cancel_line,
     tag_line = tag_line,
+    valid_due = valid_due,
+    due_line = due_line,
     has_tag = has_tag,
     scannable_lines = scannable_lines,
     parse_frontmatter = parse_frontmatter,

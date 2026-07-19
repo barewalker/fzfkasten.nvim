@@ -148,6 +148,71 @@ describe("tag_line", function()
     end)
 end)
 
+describe("valid_due", function()
+    it("accepts an ISO day and an ISO day+time", function()
+        assert.is_true(t.valid_due("2026-07-25"))
+        assert.is_true(t.valid_due("2026-07-25T15:00"))
+    end)
+
+    it("rejects relative forms, seconds, a timezone and a space separator", function()
+        assert.is_false(t.valid_due("+7d"))
+        assert.is_false(t.valid_due("fri"))
+        assert.is_false(t.valid_due("2026-07-25 15:00"))
+        assert.is_false(t.valid_due("2026-07-25T15:00:00"))
+        assert.is_false(t.valid_due("2026-07-25T15:00Z"))
+    end)
+end)
+
+describe("due_line", function()
+    before_each(function() setup({ tasks = { require_tag = "todo" } }) end)
+
+    it("appends a due to an open task, after the text", function()
+        assert.are.equal("- [ ] foo #todo due:2026-07-25",
+            t.due_line("- [ ] foo #todo", "2026-07-25"))
+    end)
+
+    it("keeps a day+time due verbatim", function()
+        assert.are.equal("- [ ] foo due:2026-07-25T15:00",
+            t.due_line("- [ ] foo", "2026-07-25T15:00"))
+    end)
+
+    it("replaces an existing due rather than writing a second one", function()
+        assert.are.equal("- [ ] foo #todo due:2026-07-25",
+            t.due_line("- [ ] foo #todo due:2026-07-20", "2026-07-25"))
+    end)
+
+    it("clears the due when given no date, leaving no dangling space", function()
+        assert.are.equal("- [ ] foo #todo",
+            t.due_line("- [ ] foo #todo due:2026-07-20", ""))
+    end)
+
+    it("leaves the priority in front of the due", function()
+        assert.are.equal("- [ ] (A) foo due:2026-07-25",
+            t.due_line("- [ ] (A) foo", "2026-07-25"))
+    end)
+
+    it("refuses a done or a cancelled task", function()
+        local d, dw = t.due_line("- [x] foo", "2026-07-25")
+        assert.is_nil(d)
+        assert.are.equal("not open", dw)
+        local c, cw = t.due_line("- [-] ~~foo~~ cancelled:2026-07-17", "2026-07-25")
+        assert.is_nil(c)
+        assert.are.equal("not open", cw)
+    end)
+
+    it("refuses a malformed date", function()
+        local out, why = t.due_line("- [ ] foo", "next friday")
+        assert.is_nil(out)
+        assert.are.equal("bad date", why)
+    end)
+
+    it("is nil on a line with no checkbox", function()
+        local out, why = t.due_line("just prose", "2026-07-25")
+        assert.is_nil(out)
+        assert.are.equal("no checkbox", why)
+    end)
+end)
+
 describe("has_tag", function()
     it("matches a whole tag but not a longer one", function()
         assert.is_true(t.has_tag("do the thing #todo", "todo"))
@@ -177,6 +242,11 @@ describe("parse_task_text", function()
         assert.are.equal("A", priority)
         assert.are.equal("2026-07-25", due)
         assert.is_truthy(text:match("foo"))
+    end)
+
+    it("captures a due date with a time", function()
+        local _, _, due = t.parse_task_text("foo due:2026-07-25T15:00", config.options.tasks)
+        assert.are.equal("2026-07-25T15:00", due)
     end)
 
     it("strips a cancelled strike and stamp, returning the bare text and date", function()

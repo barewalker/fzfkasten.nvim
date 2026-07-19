@@ -94,7 +94,10 @@ M.defaults = {
    -- class must admit every mark in `marks`.
    toggle = "^(%s*[-*]%s+%[)([ xX-])(%])",
    priority = "^%((%u)%)%s+",
-   due = "due:(%d%d%d%d%-%d%d%-%d%d)",
+   -- A due date: an ISO day, optionally with a `T`HH:MM time (no space, so it
+   -- stays one whitespace-free token that can sit anywhere in the line). The
+   -- `[T%d:]*` tail captures the optional time; it is empty for a bare day.
+   due = "due:(%d%d%d%d%-%d%d%-%d%d[T%d:]*)",
   },
   -- What the `toggle` pattern's mark capture is replaced with.
   marks = { open = " ", done = "x", cancelled = "-" },
