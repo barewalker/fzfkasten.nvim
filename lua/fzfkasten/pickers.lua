@@ -477,45 +477,73 @@ local function prompt_manual_date_and_open()
     require('fzfkasten.core').open_note("daily", t)
 end
 
-function M.pick_daily_date()
-    local opts = config.options.notes.daily
-    local lookback = opts.lookback_days or 30
-    local daily_dir = utils.join_path(config.options.home, opts.dir)
-    local now = os.time()
+-- Build the log picker's lines and a lookup from each line to the note it
+-- stands for. Recent days first, then recent weeks. Each line is
+-- "<rel>:1: <mark> <label>" so fzf-lua's builtin previewer (cwd = home) shows
+-- the note when it exists; a missing note previews blank, and the mark (✓ / a
+-- space) is what says which is which.
+-- @return table entries, table lookup (entry string -> { type, time })
+function M.log_entries(now)
+    now = now or os.time()
+    local home = config.options.home
+    local ext = "." .. config.options.extension
+    local new_name = config.options.transform.new_file_name
 
-    local entries = {}
-    local entry_to_time = {}
-    for i = 0, lookback - 1 do
-        local t = now - i * 86400
-        local label = os.date("%Y-%m-%d (%a)", t)
-        local filename_date = os.date(opts.format, t)
-        local filename = config.options.transform.new_file_name(filename_date) .. "." .. config.options.extension
-        local full_path = utils.join_path(daily_dir, filename)
-        local exists = vim.fn.filereadable(full_path) == 1
-        local display = (exists and "✓ " or "  ") .. label
-        table.insert(entries, display)
-        entry_to_time[display] = t
+    local entries, lookup = {}, {}
+    local function add(note_type, label, time)
+        local note = config.options.notes[note_type]
+        local rel = utils.join_path(note.dir, new_name(os.date(note.format, time)) .. ext)
+        local exists = vim.fn.filereadable(utils.join_path(home, rel)) == 1
+        local entry = string.format("%s:1: %s %s", rel, exists and "✓" or " ", label)
+        table.insert(entries, entry)
+        lookup[entry] = { type = note_type, time = time }
     end
 
+    local daily = config.options.notes.daily
+    for i = 0, (daily.lookback_days or 30) - 1 do
+        local t = now - i * 86400
+        add("daily", os.date("%Y-%m-%d (%a)", t), t)
+    end
+    local weekly = config.options.notes.weekly
+    for i = 0, (weekly.lookback_weeks or 8) - 1 do
+        local t = now - i * 7 * 86400
+        add("weekly", os.date(weekly.format, t), t)
+    end
+    return entries, lookup
+end
+
+-- One picker for the whole journal: recent days and weeks, existing notes
+-- previewed and opened, missing ones created from their template on select.
+-- Subsumes the daily/weekly finders -- it both browses (with preview) and
+-- creates by date, which is what they did separately.
+function M.log()
+    local entries, lookup = M.log_entries()
+
     fzf.fzf_exec(entries, vim.tbl_deep_extend("force", config.options.fzf, {
-        prompt = "Daily Date> ",
+        prompt = "Log> ",
+        -- Entries carry paths relative to `home`; the builtin previewer needs
+        -- this to resolve them, like the tasks picker.
+        cwd = config.options.home,
+        previewer = "builtin",
         fzf_opts = {
-            ["--header"] = "<ctrl-x> enter date manually",
+            ["--delimiter"] = ":",
+            ["--with-nth"] = "3..",
             ["--no-sort"] = "",
+            ["--header"] = "<ctrl-x> enter a date manually",
         },
         actions = {
             ['default'] = function(selected)
                 if not selected or #selected == 0 then return end
-                local t = entry_to_time[selected[1]]
-                if t then
-                    require('fzfkasten.core').open_note("daily", t)
+                local p = lookup[selected[1]]
+                if p then
+                    require('fzfkasten.core').open_note(p.type, p.time)
                 end
             end,
             ['ctrl-x'] = function()
                 vim.schedule(prompt_manual_date_and_open)
             end,
         }
-    }, opts.fzf_opts or {}))
+    }, config.options.notes.daily.fzf_opts or {}))
 end
 
 function M.find_weekly_notes_picker()

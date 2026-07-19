@@ -34,6 +34,9 @@ M.defaults = {
    format = "%Y-W%V",
    template = "weekly.md",
    fzf_opts = {},
+   -- How many weeks back the log picker (FzfKastenLog) lists, alongside
+   -- `daily.lookback_days` days.
+   lookback_weeks = 8,
   },
  },
  -- Tasks are plain markdown checkboxes inside your notes -- there is no index

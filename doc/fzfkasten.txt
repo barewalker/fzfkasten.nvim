@@ -6,6 +6,9 @@ COMMANDS
 
 - FzfKastenDaily: Open today's daily note.
 - FzfKastenWeekly: Open this week's weekly note.
+- FzfKastenLog: Browse recent daily/weekly notes by date in one picker --
+  existing notes preview and open, a date with no note is created from its
+  template. <ctrl-x> enters a date manually. (FzfKastenPickDailyDate is an alias.)
 - FzfKastenFindNotes: Search for notes.
 - FzfKastenTags: Search for tags.
 - FzfKastenInsert: Insert a link to a note.
