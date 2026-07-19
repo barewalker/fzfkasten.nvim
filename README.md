@@ -26,8 +26,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **External Commands**: Append external data (like `gcalcli`) to daily notes.
 - [x] **Fzfkasten Panel**: A central menu for common actions (Open, Backlinks, Rename, Delete).
 - [x] **New Templated Notes**: Create new notes from predefined templates with interactive selection.
-- [x] **Find Daily Notes**: Interactively find and open existing daily notes.
-- [x] **Find Weekly Notes**: Interactively find and open existing weekly notes.
+- [x] **Log picker**: One picker (`:FzfKastenLog`) over recent days and weeks — existing notes preview and open, missing dates are created from a template, all in one place.
 - [x] **Claude Code Integration**: Optional integration with `claudecode.nvim` to send notes/selections to Claude (disabled by default).
 - [x] **Link Aliasing**: `[[note|alias]]` syntax is supported across follow link, backlinks, and rename.
 - [x] **Filename Sanitization**: Unicode-safe default (preserves CJK) with a user-overridable `transform.sanitize_filename` hook.
@@ -184,9 +183,9 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
 
 *   **`:FzfKastenNewNote`**: Creates a new note. You will be prompted for a title and then presented with an `fzf-lua` picker to select an optional template from your `home/templates` directory. If no template is selected, it defaults to a basic note structure.
 
-*   **`:FzfKastenFindDailyNotes`**: Opens an `fzf-lua` picker to search and open existing daily notes from your `home/daily` directory.
+*   **`:FzfKastenLog`**: One picker for the whole journal. Lists the recent days (`daily.lookback_days`) and weeks (`weekly.lookback_weeks`), each marked ✓ when its note already exists. Existing notes preview and open; a date or week with no note yet is created from its template on select — so browsing old notes and filling in a missed day are the same action. `<ctrl-x>` enters a date by hand for anything older than the window. (`:FzfKastenPickDailyDate` is a kept alias.)
 
-*   **`:FzfKastenFindWeeklyNotes`**: Opens an `fzf-lua` picker to search and open existing weekly notes from your `home/weekly` directory.
+*   **`:FzfKastenFindDailyNotes`** / **`:FzfKastenFindWeeklyNotes`**: Open an `fzf-lua` picker over just the existing daily / weekly notes. `:FzfKastenLog` covers both with a preview and the ability to create, so these are mostly superseded, but they remain for browsing a single kind.
 
 *   **`:FzfKastenSearchByTag`**: First presents a list of all unique tags in your Zettelkasten, then displays notes containing the selected tag.
 

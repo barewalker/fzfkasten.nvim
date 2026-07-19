@@ -14,7 +14,10 @@ M.goto_link = function() require('fzfkasten.pickers').goto_link() end
 M.show_backlinks = function() require('fzfkasten.pickers').show_backlinks(vim.api.nvim_buf_get_name(0)) end
 M.rename_note = function() require('fzfkasten.core').rename_note_interactively() end
 M.find_daily_notes = function() require('fzfkasten.pickers').find_daily_notes_picker() end
-M.pick_daily_date = function() require('fzfkasten.pickers').pick_daily_date() end
+M.log = function() require('fzfkasten.pickers').log() end
+-- Kept as an alias: the date picker grew to cover weeks and previews and became
+-- the log picker, but the old command name still works.
+M.pick_daily_date = function() require('fzfkasten.pickers').log() end
 M.find_weekly_notes = function() require('fzfkasten.pickers').find_weekly_notes_picker() end
 M.tasks = function() require('fzfkasten.tasks').pick() end
 M.task_toggle = function() require('fzfkasten.tasks').toggle() end
