@@ -239,7 +239,9 @@ That property matters more than it looks. Because the notes *are* the ledger, an
 - [x] already done
 ```
 
-Priority `(A)` and `due:YYYY-MM-DD` are optional; tasks sort by priority, then by due date. Checkboxes inside fenced code blocks and frontmatter are ignored, so a note documenting this syntax won't report its own examples as tasks.
+Priority `(A)` and a due date are optional; tasks sort by priority, then by due date. Checkboxes inside fenced code blocks and frontmatter are ignored, so a note documenting this syntax won't report its own examples as tasks.
+
+A due date is `due:YYYY-MM-DD`, or `due:YYYY-MM-DDTHH:MM` when a time matters — ISO 8601, no space, so it stays one token you can drop anywhere in the line. Type it by hand, or let `:FzfKastenTaskDue` write it for you: `:FzfKastenTaskDue 2026-07-25` sets (or replaces) the due date on the current task, `:FzfKastenTaskDue 2026-07-25T15:00` adds a time, and `:FzfKastenTaskDue` with no argument clears it. It takes absolute dates only — the note is the ledger, and a bare `due:2026-07-25` reads the same in every editor and on your phone.
 
 | Key | Action |
 |---|---|
@@ -298,7 +300,7 @@ tasks = {
     cancelled = "^%s*[-*]%s+%[%-%]%s+(.+)$",
     toggle = "^(%s*[-*]%s+%[)([ xX-])(%])",  -- captures (before)(mark)(after)
     priority = "^%((%u)%)%s+",
-    due = "due:(%d%d%d%d%-%d%d%-%d%d)",
+    due = "due:(%d%d%d%d%-%d%d%-%d%d[T%d:]*)",  -- ISO day, optional THH:MM
   },
   marks = { open = " ", done = "x", cancelled = "-" },  -- what `toggle` writes
   new_checkbox = "- [ ] ",  -- literal `:FzfKastenTaskTag` puts in front of prose
@@ -426,7 +428,7 @@ tasks = {
     cancelled = "^%s*[-*]%s+%(%-%)%s+(.+)$", -- - (-) buy milk
     toggle = "^(%s*[-*]%s+%()([ xX-])(%))",
     priority = "^%[(%u)%]%s+",               -- - ( ) [A] buy milk
-    due = "due:(%d%d%d%d%-%d%d%-%d%d)",
+    due = "due:(%d%d%d%d%-%d%d%-%d%d[T%d:]*)",
   },
   marks = { open = " ", done = "x", cancelled = "-" },
   new_checkbox = "- ( ) ",                   -- what `:FzfKastenTaskTag` writes
