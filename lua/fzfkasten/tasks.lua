@@ -953,4 +953,22 @@ function M.pick(opts)
     }))
 end
 
+-- Pure helpers exposed for the test suite (tests/tasks_spec.lua). These do the
+-- fragile string surgery -- rewriting a mark, wrapping a strike inside a
+-- priority, stripping a stamp -- that has regressed before, so they are pinned
+-- down by tests. Underscore-prefixed and not part of the public API.
+M._test = {
+    unstrike = unstrike,
+    parse_task_text = parse_task_text,
+    split_checkbox = split_checkbox,
+    toggle_line = toggle_line,
+    cancel_line = cancel_line,
+    tag_line = tag_line,
+    has_tag = has_tag,
+    scannable_lines = scannable_lines,
+    parse_frontmatter = parse_frontmatter,
+    sort_tasks = sort_tasks,
+    note_date = note_date,
+}
+
 return M
