@@ -12,7 +12,9 @@ COMMANDS
 - FzfKastenFindNotes: Search for notes.
 - FzfKastenTags: Search for tags.
 - FzfKastenInsert: Insert a link to a note.
-- FzfKastenTasks: Pick an open `- [ ]` task and jump to it. <ctrl-x> marks it done.
+- FzfKastenTasks: Pick an open `- [ ]` task and jump to it. <ctrl-x> marks it
+  done. <alt-a> captures a new task via a guided input (text, tags picked from
+  those already in your notes, then a due date).
 - FzfKastenTaskToggle: Toggle the checkbox on the current line.
 - FzfKastenTaskAdd: Capture a new task to one fixed note (tasks.capture_note,
   or the first tasks.always entry). Takes text, or prompts with no argument.
@@ -22,7 +24,8 @@ COMMANDS
 - FzfKastenTaskCancel: Drop the task on the current line -- out of the lists,
   still in the note -- or reopen it if already dropped. <ctrl-d> in the picker.
 - FzfKastenTaskDue: Set the due date on the current task, e.g.
-  `:FzfKastenTaskDue 2026-07-25` (or `2026-07-25T15:00` for a time). Absolute
-  ISO dates only; with no argument, clears the due date.
+  `:FzfKastenTaskDue 2026-07-25` (or `2026-07-25T15:00` for a time). Also takes
+  a relative spec -- tomorrow / 明日 / +3d / 2w / fri / 金 -- resolved to an
+  absolute day; with no argument, clears the due date.
 - FzfKastenTaskUndo: Put back the last task line the picker rewrote. <alt-u>
   in the picker. Not Vim's undo: edits you make in a buffer are `u`'s.

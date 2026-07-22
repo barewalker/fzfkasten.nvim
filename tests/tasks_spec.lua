@@ -180,6 +180,56 @@ describe("new_task_line", function()
         setup({ tasks = { new_checkbox = "* [ ] " } })
         assert.are.equal("* [ ] buy milk", t.new_task_line("buy milk", nil))
     end)
+
+    it("appends a due date last, past the text and tag", function()
+        setup({ tasks = { require_tag = "todo" } })
+        assert.are.equal("- [ ] buy milk #todo due:2026-07-25",
+            t.new_task_line("buy milk", "todo", "2026-07-25"))
+    end)
+
+    it("omits the due when it is nil or empty", function()
+        setup()
+        assert.are.equal("- [ ] buy milk", t.new_task_line("buy milk", nil, nil))
+        assert.are.equal("- [ ] buy milk", t.new_task_line("buy milk", nil, ""))
+    end)
+end)
+
+describe("resolve_due", function()
+    -- A fixed Wednesday, so the relative forms resolve to known days.
+    local now = os.time({ year = 2026, month = 7, day = 22, hour = 12, min = 0, sec = 0 })
+
+    it("passes an absolute ISO day and day+time through untouched", function()
+        assert.are.equal("2026-07-25", t.resolve_due("2026-07-25", now))
+        assert.are.equal("2026-07-25T15:00", t.resolve_due("2026-07-25T15:00", now))
+    end)
+
+    it("resolves today and tomorrow, in English and Japanese", function()
+        assert.are.equal("2026-07-22", t.resolve_due("today", now))
+        assert.are.equal("2026-07-23", t.resolve_due("tomorrow", now))
+        assert.are.equal("2026-07-23", t.resolve_due("明日", now))
+        assert.are.equal("2026-07-24", t.resolve_due("明後日", now))
+    end)
+
+    it("resolves +Nd and Nw offsets", function()
+        assert.are.equal("2026-07-25", t.resolve_due("+3d", now))
+        assert.are.equal("2026-07-25", t.resolve_due("3d", now))
+        assert.are.equal("2026-08-05", t.resolve_due("2w", now))
+    end)
+
+    it("resolves a weekday to the nearest day at or after now", function()
+        -- now is a Wednesday.
+        assert.are.equal("2026-07-22", t.resolve_due("wed", now)) -- today
+        assert.are.equal("2026-07-24", t.resolve_due("fri", now)) -- this week
+        assert.are.equal("2026-07-27", t.resolve_due("mon", now)) -- next week
+        assert.are.equal("2026-07-24", t.resolve_due("金", now))
+    end)
+
+    it("is nil on a blank spec and on one it doesn't recognise", function()
+        assert.is_nil(t.resolve_due("", now))
+        assert.is_nil(t.resolve_due(nil, now))
+        assert.is_nil(t.resolve_due("someday", now))
+        assert.is_nil(t.resolve_due("2026-13-40nonsense", now))
+    end)
 end)
 
 describe("valid_due", function()
