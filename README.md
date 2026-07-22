@@ -202,6 +202,8 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
 
 *   **`:FzfKastenTaskToggle`**: Toggles the checkbox on the current line between `- [ ]` and `- [x]`, stamping the completion time.
 
+*   **`:FzfKastenTaskAdd [text]`**: Captures a new task to a single fixed note (`tasks.capture_note`, or your first `tasks.always` entry), no note to open and no decision about where it goes. With no argument it prompts. See [Tasks](#tasks).
+
 *   **`:FzfKastenTaskInbox`**: Lists the checkboxes that `tasks.require_tag` leaves out, so you can triage them. See [Tasks](#tasks).
 
 *   **`:FzfKastenTaskTag`**: Tags the current line as a task, turning prose or a bare bullet into a checkbox on the way. Takes a range, so a visual selection is tagged in one go. See [Tasks](#tasks).
@@ -289,6 +291,7 @@ tasks = {
   -- Skip notes older than N days; nil scans everything.
   since_days = nil,
   always = {},  -- notes always scanned regardless of `since_days`
+  capture_note = nil,  -- where :FzfKastenTaskAdd appends; nil = first `always` entry
   date_keys = { "date", "created" },  -- frontmatter keys holding a note's date
   date = nil,  -- function(path, lines, frontmatter) -> "YYYY-MM-DD"|nil
   patterns = {
@@ -441,6 +444,8 @@ Note `scan = false` rather than `nil`: `setup()` merges your table over the defa
 ```lua
 tasks = { since_days = 60, always = { "tasks/active.md" } }
 ```
+
+That same standing note is the natural target for **`:FzfKastenTaskAdd`**, which captures a new task to one fixed place — no note to open, no "does this belong to today?" to answer. It defaults to your first `always` entry, so the note you already keep always-scanned is where captures land and where they surface; set `capture_note` to point somewhere else. Bind it to a key and one press then a line is the whole capture; triage later with the inbox. If `require_tag` is set, the tag is added for you, so a capture is a task straight away rather than an inbox entry.
 
 **With `require_tag` set, `since_days` bounds the inbox only — a tagged task never ages out.** Tagging it was a decision, and expiring that by date would drop it from the task list *and* from the inbox, leaving it in neither. `since_days` is there to keep old untriaged checkboxes from drowning the inbox, not to overrule you.
 

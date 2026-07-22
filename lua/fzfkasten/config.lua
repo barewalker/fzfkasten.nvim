@@ -108,6 +108,13 @@ M.defaults = {
   -- literal, not a pattern: `patterns.open` is a regex and several strings
   -- match it, so the one to write can't be derived from it.
   new_checkbox = "- [ ] ",
+  -- Where `:FzfKastenTaskAdd` appends a freshly captured task: a single note,
+  -- relative to `home`. One fixed destination is the point -- recording a
+  -- todo is then one keystroke with no decision about where it lands, and you
+  -- triage it later. nil falls back to the first `always` entry (your
+  -- standing list, so the capture is always scanned); if that is empty too,
+  -- capture has nowhere to go and says so rather than guessing.
+  capture_note = nil,
   -- When set (e.g. "todo"), only checkboxes carrying `#<require_tag>` count as
   -- tasks. Everything else becomes the inbox (`:FzfKastenTaskInbox`), so
   -- checkboxes you never meant as your own -- other people's action items in
