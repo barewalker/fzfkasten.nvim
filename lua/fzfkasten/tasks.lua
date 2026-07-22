@@ -1169,6 +1169,15 @@ local function with_tags(text, picked)
     return text
 end
 
+-- fzf-lua runs an action's `fn` *before* it closes its window (core.lua calls
+-- `fn_selected` then `fzf_win:close`), so a UI opened straight out of an action
+-- races the teardown: the new window can be left as an on-screen artifact, and
+-- plugins that hook InsertEnter (skkeleton and other IMEs) may fail to attach
+-- to it. Opening it on a short timer, past the teardown, avoids both.
+local function after_fzf(fn)
+    vim.defer_fn(fn, 50)
+end
+
 --- Guided capture: ask for the task text, let you pick tags from the ones your
 --- notes already use, then a due date (relative forms accepted), and write the
 --- result with `M.add`. This is the assisted counterpart to typing a task by
@@ -1176,14 +1185,14 @@ end
 --- `tomorrow`/`+3d`/`fri` so you needn't work out the date.
 ---
 --- Each step is skippable -- no tags, no due -- and an empty task cancels the
---- capture. Meant to run after a picker has closed (from `vim.schedule`), so it
---- can open its own inputs cleanly; `on_done` runs at the end, and the task
---- picker passes a reopen there so the new task lands back in view.
+--- capture. The two fzf->input hops go through `after_fzf`, so the input opens
+--- cleanly after the picker has torn down (see its note); `on_done` runs at the
+--- end, and the task picker passes a reopen there so the new task lands in view.
 --- @param seed string|nil prefills the task input (the picker seeds its query)
 --- @param on_done function|nil called once the capture finishes or is abandoned
 function M.capture(seed, on_done)
     on_done = on_done or function() end
-    vim.ui.input({ prompt = "Task: ", default = seed or "" }, function(text)
+    vim.ui.input({ prompt = "New task: ", default = seed or "" }, function(text)
         if not text or vim.trim(text) == "" then
             return -- cancelled: leave the list closed rather than reopen on nothing
         end
@@ -1224,9 +1233,11 @@ function M.capture(seed, on_done)
             },
             actions = {
                 -- `selected` is the list of ticked tags, or empty on a bare
-                -- <enter>. Either way the due step runs next.
+                -- <enter>. The due step is an input, so it waits for this
+                -- picker to close (see `after_fzf`) before opening.
                 ['default'] = function(selected)
-                    finish(selected or {})
+                    local picked = selected or {}
+                    after_fzf(function() finish(picked) end)
                 end,
             },
         }))
@@ -1354,7 +1365,9 @@ function M.pick(opts)
             ['alt-a'] = {
                 fn = function(selected)
                     local seed = (selected and selected[1]) or ""
-                    vim.schedule(function()
+                    -- Wait for this picker to close before opening the input,
+                    -- or it races the teardown -- see `after_fzf`.
+                    after_fzf(function()
                         M.capture(seed, function() M.pick(opts) end)
                     end)
                 end,
