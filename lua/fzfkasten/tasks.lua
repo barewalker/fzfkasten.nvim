@@ -33,8 +33,10 @@ local filter_hook_warned = false
 local history = {}
 local HISTORY_MAX = 50
 
-local function remember(path, lineno, before, after)
-    table.insert(history, { path = path, lineno = lineno, before = before, after = after })
+-- `added` marks an entry whose line was appended, not rewritten: it has no
+-- `before` to restore, so `M.undo` deletes the line instead of replacing it.
+local function remember(path, lineno, before, after, added)
+    table.insert(history, { path = path, lineno = lineno, before = before, after = after, added = added })
     if #history > HISTORY_MAX then
         table.remove(history, 1)
     end
@@ -977,9 +979,10 @@ function M.tag(opts)
     vim.api.nvim_buf_set_lines(0, line1 - 1, line2, false, lines)
 end
 
---- Put back the last task line rewritten in a note on disk -- the last
---- `<ctrl-x>`, `<ctrl-d>` or `<ctrl-t>` from the picker. Repeat to walk back
---- through them.
+--- Put back the last task line the picker changed on disk -- the last
+--- `<ctrl-x>`, `<ctrl-d>`, `<ctrl-t>` or `<alt-a>`. Repeat to walk back through
+--- them. A rewrite is restored to its old text; a capture (`<alt-a>`, which
+--- added a line rather than rewriting one) is undone by deleting that line.
 ---
 --- This is not Vim's undo and does not touch it: those keys write the note
 --- itself, often without it being open, which is exactly where `u` cannot
@@ -1018,7 +1021,13 @@ function M.undo()
         return false
     end
 
-    lines[last.lineno] = last.before
+    -- A capture added the line, so undoing it means removing the line; a
+    -- rewrite is put back to its old text.
+    if last.added then
+        table.remove(lines, last.lineno)
+    else
+        lines[last.lineno] = last.before
+    end
     vim.fn.writefile(lines, last.path)
     table.remove(history)
     if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
@@ -1050,9 +1059,9 @@ end
 --- goes. `require_tag`, if set, is added, so the capture lands in the task list
 --- straight away rather than the inbox.
 ---
---- Not recorded for `M.undo`: that undo puts a rewritten line back, and there
---- is no line here to put back -- an accidental capture is one `dd` away in a
---- note you can open like any other.
+--- Recorded for `M.undo` as an addition, so `<alt-u>` right after a capture
+--- deletes the line again -- the same key that walks back the picker's other
+--- edits, doing here what it can't for a rewrite: removing the line outright.
 --- @param text string the task text; the checkbox and tag are added here
 --- @param due string|nil an ISO due date to append (already resolved)
 --- @return boolean true when the task was written
@@ -1099,6 +1108,7 @@ function M.add(text, due)
 
     table.insert(lines, line)
     vim.fn.writefile(lines, path)
+    remember(path, #lines, nil, line, true)
     if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
         vim.schedule(function()
             pcall(vim.cmd, "checktime " .. bufnr)
