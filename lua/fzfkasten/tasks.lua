@@ -1296,7 +1296,13 @@ function M.pick(opts)
         if not entry.path then return end
         buffer.edit(entry.path)
         if entry.line then
-            vim.api.nvim_win_set_cursor(0, { entry.line, (entry.col or 1) - 1 })
+            -- Jump to the head of the task line. Entries carry no meaningful
+            -- column, and a `:` in the task text (a time like 15:00, a URL)
+            -- makes `entry_to_file` read a bogus, out-of-range column that
+            -- `nvim_win_set_cursor` rejects -- so ignore `entry.col` entirely.
+            local last = vim.api.nvim_buf_line_count(0)
+            local line = math.min(entry.line, last)
+            vim.api.nvim_win_set_cursor(0, { line, 0 })
         end
     end
 
