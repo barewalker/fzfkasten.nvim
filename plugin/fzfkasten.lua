@@ -19,6 +19,7 @@ cmd("FzfKastenFindWeeklyNotes", function() require('fzfkasten').find_weekly_note
 cmd("FzfKastenTasks", function() require('fzfkasten').tasks() end, { desc = "Fzfkasten: Pick an open task and jump to its note" })
 cmd("FzfKastenTaskToggle", function() require('fzfkasten').task_toggle() end, { desc = "Fzfkasten: Toggle the checkbox on the current line" })
 cmd("FzfKastenTaskInbox", function() require('fzfkasten').task_inbox() end, { desc = "Fzfkasten: Triage checkboxes that aren't tagged as tasks" })
+cmd("FzfKastenTaskAdd", function(o) require('fzfkasten').task_add(o.args) end, { nargs = "?", desc = "Fzfkasten: Capture a new task to the capture note (prompts with no argument)" })
 cmd("FzfKastenTaskTag", function(o) require('fzfkasten').task_tag({ line1 = o.line1, line2 = o.line2 }) end, { range = true, desc = "Fzfkasten: Tag the current line (or range) as a task" })
 cmd("FzfKastenTaskCancel", function() require('fzfkasten').task_cancel() end, { desc = "Fzfkasten: Cancel the task on the current line, or reopen it" })
 cmd("FzfKastenTaskDue", function(o) require('fzfkasten').task_due(o.args) end, { nargs = "?", desc = "Fzfkasten: Set (or, with no argument, clear) the due date on the current task" })

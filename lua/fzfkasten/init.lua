@@ -21,6 +21,18 @@ M.pick_daily_date = function() require('fzfkasten.pickers').log() end
 M.find_weekly_notes = function() require('fzfkasten.pickers').find_weekly_notes_picker() end
 M.tasks = function() require('fzfkasten.tasks').pick() end
 M.task_toggle = function() require('fzfkasten.tasks').toggle() end
+-- With text, capture it. Without, prompt: bound to a key, one press then type
+-- is the whole capture, no note to open and nothing to aim at.
+M.task_add = function(text)
+    if text and vim.trim(text) ~= "" then
+        return require('fzfkasten.tasks').add(text)
+    end
+    vim.ui.input({ prompt = "New task: " }, function(input)
+        if input and vim.trim(input) ~= "" then
+            require('fzfkasten.tasks').add(input)
+        end
+    end)
+end
 M.task_inbox = function() require('fzfkasten.tasks').inbox() end
 M.task_tag = function(opts) require('fzfkasten.tasks').tag(opts) end
 M.task_cancel = function() require('fzfkasten.tasks').cancel() end

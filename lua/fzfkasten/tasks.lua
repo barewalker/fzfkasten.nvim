@@ -420,6 +420,22 @@ local function tag_line(line, tag)
     return line:gsub("%s*$", "") .. " #" .. tag
 end
 
+-- Build the checkbox line for a freshly captured task, or nil when there is
+-- nothing to capture (blank text). The tag goes on so the new task lands in
+-- the task list rather than the inbox: capture is a decision to do the thing,
+-- and `require_tag` is what that decision looks like on disk.
+local function new_task_line(text, tag)
+    text = vim.trim(text or "")
+    if text == "" then
+        return nil
+    end
+    local line = config.options.tasks.new_checkbox .. text
+    if tag and not has_tag(line, tag) then
+        line = line .. " #" .. tag
+    end
+    return line
+end
+
 -- Is `date` an absolute due date we will write? An ISO day, or a day with an
 -- ISO HH:MM time. No relative forms, no seconds, no timezone: the writer's
 -- output is the on-disk contract, so it stays exactly what `patterns.due`
@@ -922,6 +938,84 @@ function M.undo()
     return true
 end
 
+-- Where a captured task is written: `capture_note`, or the first `always`
+-- entry, as an absolute path -- or nil plus a reason when neither is set.
+--
+-- Reusing `always[1]` is deliberate: that note is already scanned regardless
+-- of `since_days`, so a task captured into it always surfaces. Adding a second
+-- setting for the same file would only invite the two to disagree.
+local function capture_target()
+    local o = config.options.tasks
+    local rel = o.capture_note or (o.always or {})[1]
+    if not rel then
+        return nil, "unset"
+    end
+    return utils.join_path(config.options.home, rel), rel
+end
+
+--- Append a new open task to the capture note (`tasks.capture_note`, or the
+--- first `tasks.always` entry). This is the write side of a fixed task list:
+--- record a todo from anywhere, no note to open and no decision about where it
+--- goes. `require_tag`, if set, is added, so the capture lands in the task list
+--- straight away rather than the inbox.
+---
+--- Not recorded for `M.undo`: that undo puts a rewritten line back, and there
+--- is no line here to put back -- an accidental capture is one `dd` away in a
+--- note you can open like any other.
+--- @param text string the task text; the checkbox and tag are added here
+--- @return boolean true when the task was written
+function M.add(text)
+    local o = config.options.tasks
+    local line = new_task_line(text, o.require_tag)
+    if not line then
+        vim.notify("[Fzfkasten] Nothing to capture.", vim.log.levels.WARN)
+        return false
+    end
+
+    local path, rel = capture_target()
+    if not path then
+        vim.notify(
+            "[Fzfkasten] No capture note set. Point tasks.capture_note (or the "
+            .. "first tasks.always entry) at a note to capture into.",
+            vim.log.levels.WARN
+        )
+        return false
+    end
+
+    local bufnr = vim.fn.bufnr(path)
+    if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) and vim.bo[bufnr].modified then
+        vim.notify("[Fzfkasten] Buffer has unsaved changes: " .. path, vim.log.levels.WARN)
+        return false
+    end
+
+    local lines = {}
+    if vim.fn.filereadable(path) == 1 then
+        local ok, read = pcall(vim.fn.readfile, path)
+        if not ok then
+            vim.notify("[Fzfkasten] Couldn't read capture note: " .. path, vim.log.levels.WARN)
+            return false
+        end
+        lines = read
+    else
+        -- First capture creates the note. Make its directory the way open_note
+        -- does, so a fresh `tasks/active.md` just works with nothing set up.
+        local dir = vim.fn.fnamemodify(path, ":h")
+        if vim.fn.isdirectory(dir) == 0 then
+            vim.fn.mkdir(dir, "p")
+        end
+    end
+
+    table.insert(lines, line)
+    vim.fn.writefile(lines, path)
+    if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
+        vim.schedule(function()
+            pcall(vim.cmd, "checktime " .. bufnr)
+        end)
+    end
+    vim.notify("[Fzfkasten] Captured to " .. rel, vim.log.levels.INFO)
+    return true
+end
+
 --- Pick the checkboxes `require_tag` leaves out, for triage. Same picker as
 --- `M.pick`; jump to one and tag it to promote it to a task.
 --- @param opts table|nil forwarded to `M.collect`
@@ -1045,6 +1139,7 @@ M._test = {
     toggle_line = toggle_line,
     cancel_line = cancel_line,
     tag_line = tag_line,
+    new_task_line = new_task_line,
     valid_due = valid_due,
     due_line = due_line,
     has_tag = has_tag,

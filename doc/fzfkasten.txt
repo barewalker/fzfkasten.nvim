@@ -14,6 +14,8 @@ COMMANDS
 - FzfKastenInsert: Insert a link to a note.
 - FzfKastenTasks: Pick an open `- [ ]` task and jump to it. <ctrl-x> marks it done.
 - FzfKastenTaskToggle: Toggle the checkbox on the current line.
+- FzfKastenTaskAdd: Capture a new task to one fixed note (tasks.capture_note,
+  or the first tasks.always entry). Takes text, or prompts with no argument.
 - FzfKastenTaskInbox: Triage checkboxes not tagged as tasks. <ctrl-t> tags one.
 - FzfKastenTaskTag: Tag the current line as a task, making it a checkbox first
   if it isn't one. Takes a range, so a selection is tagged in one go.
