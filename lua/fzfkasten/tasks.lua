@@ -424,7 +424,7 @@ end
 -- nothing to capture (blank text). The tag goes on so the new task lands in
 -- the task list rather than the inbox: capture is a decision to do the thing,
 -- and `require_tag` is what that decision looks like on disk.
-local function new_task_line(text, tag)
+local function new_task_line(text, tag, due)
     text = vim.trim(text or "")
     if text == "" then
         return nil
@@ -432,6 +432,11 @@ local function new_task_line(text, tag)
     local line = config.options.tasks.new_checkbox .. text
     if tag and not has_tag(line, tag) then
         line = line .. " #" .. tag
+    end
+    -- Due last, past the text and the tag, the way the notes already write it
+    -- (`redraw #todo due:...`). The caller resolves it to ISO first.
+    if due and due ~= "" then
+        line = line .. " due:" .. due
     end
     return line
 end
@@ -444,6 +449,62 @@ end
 local function valid_due(date)
     return date:match("^%d%d%d%d%-%d%d%-%d%d$") ~= nil
         or date:match("^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d$") ~= nil
+end
+
+-- Day offsets for the words people reach for. Japanese keys sit alongside the
+-- English so `明日` and `tomorrow` both land.
+local REL_OFFSETS = {
+    today = 0, ["今日"] = 0,
+    tomorrow = 1, tom = 1, tmr = 1, ["明日"] = 1, ["あした"] = 1,
+    ["明後日"] = 2, ["あさって"] = 2,
+}
+-- Weekday -> os.date("%w") number (0 = Sunday).
+local WEEKDAYS = {
+    sun = 0, sunday = 0, ["日"] = 0,
+    mon = 1, monday = 1, ["月"] = 1,
+    tue = 2, tuesday = 2, ["火"] = 2,
+    wed = 3, wednesday = 3, ["水"] = 3,
+    thu = 4, thursday = 4, ["木"] = 4,
+    fri = 5, friday = 5, ["金"] = 5,
+    sat = 6, saturday = 6, ["土"] = 6,
+}
+
+-- Turn a due spec into an absolute ISO date, or nil when it isn't one we know.
+--
+-- Absolute forms pass straight through (whatever `valid_due` accepts); the rest
+-- are read relative to `now`: `today`/`tomorrow` (and `明日`), `+3d`/`2w`, and
+-- weekday names (`fri`, `金`). A weekday resolves to the nearest day with that
+-- name at or after `now`, so on a Tuesday `fri` is this week and `tue` is today.
+--
+-- `now` is a parameter, defaulting to today, so the relative resolution can be
+-- tested against a fixed day rather than whenever the suite happens to run.
+local function resolve_due(spec, now)
+    spec = vim.trim(spec or "")
+    if spec == "" then
+        return nil
+    end
+    if valid_due(spec) then
+        return spec
+    end
+    now = now or os.time()
+    local key = spec:lower()
+    -- Japanese keys don't lowercase, so try the raw spec for those.
+    local off = REL_OFFSETS[key] or REL_OFFSETS[spec]
+    if off then
+        return os.date("%Y-%m-%d", now + off * DAY)
+    end
+    local n, unit = key:match("^%+?(%d+)([dw])$")
+    if n then
+        local mult = unit == "w" and 7 or 1
+        return os.date("%Y-%m-%d", now + tonumber(n) * mult * DAY)
+    end
+    local wd = WEEKDAYS[key] or WEEKDAYS[spec]
+    if wd then
+        local today_wd = tonumber(os.date("%w", now))
+        local delta = (wd - today_wd) % 7
+        return os.date("%Y-%m-%d", now + delta * DAY)
+    end
+    return nil
 end
 
 -- Set, replace or clear the `due:` on an open task. Returns the rewritten line,
@@ -752,14 +813,16 @@ local function due_refusal(why)
         return "[Fzfkasten] That task isn't open; a due date is for something "
             .. "still to do."
     elseif why == "bad date" then
-        return "[Fzfkasten] Expected a date like 2026-07-25 or 2026-07-25T15:00."
+        return "[Fzfkasten] Expected a date like 2026-07-25 or 2026-07-25T15:00, "
+            .. "or a relative one like tomorrow, +3d or fri."
     end
     return "[Fzfkasten] No checkbox on this line."
 end
 
 --- Set, replace or clear the due date on the task on the current line. With no
---- argument the due date is cleared; otherwise it must be an absolute ISO date
---- (`2026-07-25`) or date and time (`2026-07-25T15:00`).
+--- argument the due date is cleared; otherwise it may be an absolute ISO date
+--- (`2026-07-25`), a date and time (`2026-07-25T15:00`), or a relative form
+--- (`tomorrow`, `+3d`, `2w`, `fri`, `金`) resolved to a concrete day.
 ---
 --- Edits the buffer, not the file: this runs while you are writing the note,
 --- so it is Vim's `u` that undoes it, like `M.tag`.
@@ -767,7 +830,18 @@ end
 function M.set_due(date)
     local lineno = vim.api.nvim_win_get_cursor(0)[1]
     local cur = vim.api.nvim_get_current_line()
-    local out, why = due_line(cur, date)
+    -- Resolve a relative spec to ISO before the line surgery, which only knows
+    -- absolute dates. An empty spec stays empty so due_line clears the due.
+    local spec = date and vim.trim(date) or ""
+    local resolved = date
+    if spec ~= "" then
+        resolved = resolve_due(spec)
+        if not resolved then
+            vim.notify(due_refusal("bad date"), vim.log.levels.WARN)
+            return
+        end
+    end
+    local out, why = due_line(cur, resolved)
     if not out then
         vim.notify(due_refusal(why), vim.log.levels.WARN)
         return
@@ -963,10 +1037,11 @@ end
 --- is no line here to put back -- an accidental capture is one `dd` away in a
 --- note you can open like any other.
 --- @param text string the task text; the checkbox and tag are added here
+--- @param due string|nil an ISO due date to append (already resolved)
 --- @return boolean true when the task was written
-function M.add(text)
+function M.add(text, due)
     local o = config.options.tasks
-    local line = new_task_line(text, o.require_tag)
+    local line = new_task_line(text, o.require_tag, due)
     if not line then
         vim.notify("[Fzfkasten] Nothing to capture.", vim.log.levels.WARN)
         return false
@@ -1014,6 +1089,131 @@ function M.add(text)
     end
     vim.notify("[Fzfkasten] Captured to " .. rel, vim.log.levels.INFO)
     return true
+end
+
+-- Every `#tag` already used across the notes, sorted, with `require_tag` (the
+-- one you almost always want) floated to the front. Gathered fresh with rg so
+-- a tag coined an hour ago is offered now; falls back to reading notes when rg
+-- is absent, like the task scan does.
+local function collect_tags()
+    local set = {}
+    local extension = config.options.extension
+    if vim.fn.executable("rg") == 1 then
+        local out = vim.fn.systemlist({
+            "rg", "--no-filename", "--no-messages", "--no-line-number",
+            "-o", "--glob", "*." .. extension,
+            "-e", "#[A-Za-z0-9_-]+",
+            config.options.home,
+        })
+        if vim.v.shell_error <= 1 then
+            for _, tag in ipairs(out or {}) do
+                set[tag] = true
+            end
+        end
+    else
+        for _, path in ipairs(all_notes()) do
+            local ok, lines = pcall(vim.fn.readfile, path)
+            if ok and lines then
+                for _, line in ipairs(lines) do
+                    for name in line:gmatch("#[%w_-]+") do
+                        set[name] = true
+                    end
+                end
+            end
+        end
+    end
+
+    local rt = config.options.tasks.require_tag
+    local front = rt and ("#" .. rt) or nil
+    if front then
+        set[front] = nil
+    end
+    local tags = {}
+    for tag in pairs(set) do
+        table.insert(tags, tag)
+    end
+    table.sort(tags)
+    if front then
+        table.insert(tags, 1, front)
+    end
+    return tags
+end
+
+-- Append the `#tag` entries the user picked to `text`, skipping any it already
+-- carries. Picker entries come with the `#` on; a `require_tag` pick is
+-- harmless since `M.add` adds that one anyway.
+local function with_tags(text, picked)
+    for _, tag in ipairs(picked or {}) do
+        local name = tag:gsub("^#", "")
+        if name ~= "" and not has_tag(text, name) then
+            text = text .. " #" .. name
+        end
+    end
+    return text
+end
+
+--- Guided capture: ask for the task text, let you pick tags from the ones your
+--- notes already use, then a due date (relative forms accepted), and write the
+--- result with `M.add`. This is the assisted counterpart to typing a task by
+--- hand: the tag list saves you misremembering a tag, and the due step takes
+--- `tomorrow`/`+3d`/`fri` so you needn't work out the date.
+---
+--- Each step is skippable -- no tags, no due -- and an empty task cancels the
+--- capture. Meant to run after a picker has closed (from `vim.schedule`), so it
+--- can open its own inputs cleanly; `on_done` runs at the end, and the task
+--- picker passes a reopen there so the new task lands back in view.
+--- @param seed string|nil prefills the task input (the picker seeds its query)
+--- @param on_done function|nil called once the capture finishes or is abandoned
+function M.capture(seed, on_done)
+    on_done = on_done or function() end
+    vim.ui.input({ prompt = "Task: ", default = seed or "" }, function(text)
+        if not text or vim.trim(text) == "" then
+            return -- cancelled: leave the list closed rather than reopen on nothing
+        end
+
+        local function finish(picked)
+            local body = with_tags(vim.trim(text), picked)
+            vim.ui.input({
+                prompt = "Due (blank = none, e.g. tomorrow / +3d / fri / 2026-07-25): ",
+            }, function(spec)
+                local due
+                if spec and vim.trim(spec) ~= "" then
+                    due = resolve_due(spec)
+                    if not due then
+                        vim.notify(
+                            "[Fzfkasten] Didn't recognise '" .. vim.trim(spec)
+                            .. "'; captured without a due date.",
+                            vim.log.levels.WARN
+                        )
+                    end
+                end
+                M.add(body, due)
+                on_done()
+            end)
+        end
+
+        local tags = collect_tags()
+        if #tags == 0 then
+            finish({})
+            return
+        end
+        fzf.fzf_exec(tags, vim.tbl_deep_extend("force", config.options.fzf, {
+            prompt = "Tags> ",
+            fzf_opts = {
+                -- `require_tag` sits first and `M.add` adds it anyway, so a bare
+                -- <enter> (which takes the highlighted row) just reaffirms it.
+                ["--multi"] = "",
+                ["--header"] = "<tab> mark extra tags   <enter> confirm   <esc> cancel",
+            },
+            actions = {
+                -- `selected` is the list of ticked tags, or empty on a bare
+                -- <enter>. Either way the due step runs next.
+                ['default'] = function(selected)
+                    finish(selected or {})
+                end,
+            },
+        }))
+    end)
 end
 
 --- Pick the checkboxes `require_tag` leaves out, for triage. Same picker as
@@ -1073,8 +1273,8 @@ function M.pick(opts)
             ["--with-nth"] = "3..",
             ["--no-sort"] = "",
             ["--header"] = config.options.tasks.require_tag and opts.inbox
-                and "<ctrl-t> tag as task   <ctrl-x> mark done   <ctrl-d> cancel   <alt-u> undo"
-                or "<ctrl-x> mark done   <ctrl-d> cancel   <alt-u> undo",
+                and "<ctrl-t> tag as task   <ctrl-x> mark done   <ctrl-d> cancel   <alt-a> add   <alt-u> undo"
+                or "<ctrl-x> mark done   <ctrl-d> cancel   <alt-a> add   <alt-u> undo",
         },
         actions = {
             ['default'] = open,
@@ -1124,6 +1324,25 @@ function M.pick(opts)
                 end,
                 reload = true,
             },
+            -- Capture a new task with the guided input: text, then tags picked
+            -- from those your notes already use, then a due date that takes
+            -- `tomorrow`/`+3d`/`fri`. `field_index = "{q}"` hands the fzf query
+            -- over as the seed, so whatever you had typed prefills the task.
+            --
+            -- Not `<ctrl-a>`: that is fzf's own "jump to line start" and worth
+            -- keeping. This closes the picker (no `reload`), and `M.capture`
+            -- reopens it via `on_done` once the task is written, so the new
+            -- task lands back in the list -- the query and cursor reset, which
+            -- is the cost of stepping out to a real input with completion.
+            ['alt-a'] = {
+                fn = function(selected)
+                    local seed = (selected and selected[1]) or ""
+                    vim.schedule(function()
+                        M.capture(seed, function() M.pick(opts) end)
+                    end)
+                end,
+                field_index = "{q}",
+            },
         },
     }))
 end
@@ -1141,6 +1360,7 @@ M._test = {
     tag_line = tag_line,
     new_task_line = new_task_line,
     valid_due = valid_due,
+    resolve_due = resolve_due,
     due_line = due_line,
     has_tag = has_tag,
     scannable_lines = scannable_lines,

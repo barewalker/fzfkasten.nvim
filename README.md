@@ -242,7 +242,7 @@ That property matters more than it looks. Because the notes *are* the ledger, an
 
 Priority `(A)` and a due date are optional; tasks sort by priority, then by due date. Checkboxes inside fenced code blocks and frontmatter are ignored, so a note documenting this syntax won't report its own examples as tasks.
 
-A due date is `due:YYYY-MM-DD`, or `due:YYYY-MM-DDTHH:MM` when a time matters — ISO 8601, no space, so it stays one token you can drop anywhere in the line. Type it by hand, or let `:FzfKastenTaskDue` write it for you: `:FzfKastenTaskDue 2026-07-25` sets (or replaces) the due date on the current task, `:FzfKastenTaskDue 2026-07-25T15:00` adds a time, and `:FzfKastenTaskDue` with no argument clears it. It takes absolute dates only — the note is the ledger, and a bare `due:2026-07-25` reads the same in every editor and on your phone.
+A due date is `due:YYYY-MM-DD`, or `due:YYYY-MM-DDTHH:MM` when a time matters — ISO 8601, no space, so it stays one token you can drop anywhere in the line. Type it by hand, or let `:FzfKastenTaskDue` write it for you: `:FzfKastenTaskDue 2026-07-25` sets (or replaces) the due date on the current task, `:FzfKastenTaskDue 2026-07-25T15:00` adds a time, and `:FzfKastenTaskDue` with no argument clears it. It also takes a relative spec and works out the day: `tomorrow` (or `明日`), `+3d`, `2w`, a weekday name (`fri`, `金`, resolved to the nearest such day at or after today). What lands in the note is always the absolute date, though — the note is the ledger, and a bare `due:2026-07-25` reads the same in every editor and on your phone. The `<alt-a>` capture asks for a due the same way.
 
 | Key | Action |
 |---|---|
@@ -250,6 +250,7 @@ A due date is `due:YYYY-MM-DD`, or `due:YYYY-MM-DDTHH:MM` when a time matters �
 | `<ctrl-x>` | Mark done in the note; the list refreshes in place |
 | `<ctrl-d>` | Drop the task: out of the list, still in the note |
 | `<ctrl-t>` | Add `require_tag`, promoting an inbox entry to a task |
+| `<alt-a>` | Capture a new task with a guided input: text (seeded from what you typed), tags picked from those your notes already use, then a due date. Writes to the capture note and reopens the list |
 | `<alt-u>` | Put back the last line any of these rewrote |
 
 ### Choosing what counts as a task
@@ -445,7 +446,7 @@ Note `scan = false` rather than `nil`: `setup()` merges your table over the defa
 tasks = { since_days = 60, always = { "tasks/active.md" } }
 ```
 
-That same standing note is the natural target for **`:FzfKastenTaskAdd`**, which captures a new task to one fixed place — no note to open, no "does this belong to today?" to answer. It defaults to your first `always` entry, so the note you already keep always-scanned is where captures land and where they surface; set `capture_note` to point somewhere else. Bind it to a key and one press then a line is the whole capture; triage later with the inbox. If `require_tag` is set, the tag is added for you, so a capture is a task straight away rather than an inbox entry.
+That same standing note is the natural target for **`:FzfKastenTaskAdd`**, which captures a new task to one fixed place — no note to open, no "does this belong to today?" to answer. It defaults to your first `always` entry, so the note you already keep always-scanned is where captures land and where they surface; set `capture_note` to point somewhere else. Bind it to a key and one press then a line is the whole capture; triage later with the inbox. If `require_tag` is set, the tag is added for you, so a capture is a task straight away rather than an inbox entry. The same capture is a keypress away from inside `:FzfKastenTasks` itself: press `<alt-a>` and a guided input takes the task text (seeded from whatever you had typed to filter), lets you pick tags from the ones your notes already use, and asks for a due date — so noticing a new task while working the list doesn't mean leaving it. (`<alt-a>`, not `<ctrl-a>`, which stays fzf's own jump-to-line-start.)
 
 **With `require_tag` set, `since_days` bounds the inbox only — a tagged task never ages out.** Tagging it was a decision, and expiring that by date would drop it from the task list *and* from the inbox, leaving it in neither. `since_days` is there to keep old untriaged checkboxes from drowning the inbox, not to overrule you.
 
