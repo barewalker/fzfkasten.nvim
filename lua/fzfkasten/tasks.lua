@@ -781,8 +781,22 @@ function M.tag_at(path, lineno)
     return true
 end
 
+-- The current-line editors below write to the buffer you are in. On a
+-- non-modifiable buffer -- the dashboard, a terminal, a help page -- that throws
+-- from deep inside nvim_buf_set_lines, so refuse with a word instead. The
+-- picker's `_at` writers don't go through here: they write a file by path,
+-- never the current buffer.
+local function buffer_writable()
+    if vim.bo.modifiable and not vim.bo.readonly and vim.bo.buftype == "" then
+        return true
+    end
+    vim.notify("[Fzfkasten] Not an editable note buffer.", vim.log.levels.WARN)
+    return false
+end
+
 --- Toggle the checkbox on the current line of the current buffer.
 function M.toggle()
+    if not buffer_writable() then return end
     local lineno = vim.api.nvim_win_get_cursor(0)[1]
     local toggled, why = toggle_line(vim.api.nvim_get_current_line())
     if not toggled then
@@ -828,6 +842,7 @@ end
 --- so it is Vim's `u` that undoes it, like `M.tag`.
 --- @param date string|nil the new due date, or nil/"" to clear
 function M.set_due(date)
+    if not buffer_writable() then return end
     local lineno = vim.api.nvim_win_get_cursor(0)[1]
     local cur = vim.api.nvim_get_current_line()
     -- Resolve a relative spec to ISO before the line surgery, which only knows
@@ -860,6 +875,7 @@ end
 
 --- Cancel the task on the current line, or reopen it if already cancelled.
 function M.cancel()
+    if not buffer_writable() then return end
     local lineno = vim.api.nvim_win_get_cursor(0)[1]
     local cancelled, why = cancel_line(vim.api.nvim_get_current_line())
     if not cancelled then
@@ -918,6 +934,7 @@ end
 --- @param opts table|nil `{ line1 = number, line2 = number }`, 1-indexed and
 ---   inclusive; defaults to the cursor line.
 function M.tag(opts)
+    if not buffer_writable() then return end
     local tag = config.options.tasks.require_tag
     if not tag then
         vim.notify("[Fzfkasten] tasks.require_tag is not set.", vim.log.levels.WARN)
