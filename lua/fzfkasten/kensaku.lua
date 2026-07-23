@@ -31,17 +31,29 @@ function M.regex(romaji)
     return nil
 end
 
--- Turn a romaji query into a ripgrep-compatible regex, or nil. kensaku's
--- JavaScript flavour (`(?:...)`, `|`, classes) is what ripgrep's Rust engine
--- understands; the Vim flavour above is not. `eval` on the flavour global also
--- triggers its autoload script, which a bare `vim.g` access would not. Use this
--- when the query is fed to `rg` (content search), not matched in Lua.
+-- kensaku's JavaScript regex flavour, inlined from `g:kensaku#rxop#javascript`
+-- (autoload/kensaku/rxop.vim). This is what ripgrep's Rust engine understands
+-- -- `(?:...)`, `|`, classes -- whereas the Vim flavour above is not. Inlining
+-- it means `rg_regex` leans only on `kensaku#query`, exactly like `regex`,
+-- rather than also on the flavour global loading in time; the two then succeed
+-- or fail together instead of content search lagging the task picker.
+local RXOP_RG = {
+    ["or"] = "|",
+    startGroup = "(?:",
+    endGroup = ")",
+    startClass = "[",
+    endClass = "]",
+    newline = "",
+    escape = "\\.[]{}()*+-?^$|",
+}
+
+-- Turn a romaji query into a ripgrep-compatible regex, or nil (blank input,
+-- kensaku absent, or denops not ready). Use this when the query is fed to `rg`
+-- (content search), not matched in Lua.
 function M.rg_regex(romaji)
     romaji = vim.trim(romaji or "")
     if romaji == "" or not M.available() then return nil end
-    local ok_rxop, rxop = pcall(vim.fn.eval, "g:kensaku#rxop#javascript")
-    if not ok_rxop then return nil end
-    local ok, re = pcall(vim.fn["kensaku#query"], romaji, { rxop = rxop })
+    local ok, re = pcall(vim.fn["kensaku#query"], romaji, { rxop = RXOP_RG })
     if ok and type(re) == "string" and re ~= "" then return re end
     return nil
 end
