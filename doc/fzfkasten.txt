@@ -14,7 +14,9 @@ COMMANDS
 - FzfKastenInsert: Insert a link to a note.
 - FzfKastenTasks: Pick an open `- [ ]` task and jump to it. <ctrl-x> marks it
   done. <alt-a> captures a new task via a guided input (text, tags picked from
-  those already in your notes, then a due date).
+  those already in your notes, then a due date). <alt-/> narrows the list by
+  romaji via kensaku.vim (e.g. `kaigi` finds 会議); shown only when kensaku is
+  installed, blank input clears it.
 - FzfKastenTaskToggle: Toggle the checkbox on the current line.
 - FzfKastenTaskAdd: Capture a new task to one fixed note (tasks.capture_note,
   or the first tasks.always entry). Takes text, or prompts with no argument.

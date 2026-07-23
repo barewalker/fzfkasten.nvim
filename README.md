@@ -251,7 +251,10 @@ A due date is `due:YYYY-MM-DD`, or `due:YYYY-MM-DDTHH:MM` when a time matters �
 | `<ctrl-d>` | Drop the task: out of the list, still in the note |
 | `<ctrl-t>` | Add `require_tag`, promoting an inbox entry to a task |
 | `<alt-a>` | Capture a new task with a guided input: text (seeded from what you typed), tags picked from those your notes already use, then a due date. Writes to the capture note and reopens the list |
+| `<alt-/>` | Narrow the list by romaji: `kaigi` finds 会議. Needs [kensaku.vim](https://github.com/lambdalisue/kensaku.vim); empty input clears it |
 | `<alt-u>` | Put back the last line any of these rewrote |
+
+If your tasks are written in Japanese, fzf's own filter needs you to type Japanese to match them. **`<alt-/>` lets you narrow by romaji instead**: it asks for a query (seeded from whatever you had typed), hands it to [kensaku.vim](https://github.com/lambdalisue/kensaku.vim) to build a matcher, and reopens the list showing only the tasks it matches — so `kaigi` surfaces 会議 without leaving your keyboard's Latin layout. Empty input clears the filter; the prompt reads `Tasks (romaji)>` while one is active. The key only appears when kensaku is installed — it is an optional dependency, not required.
 
 ### Choosing what counts as a task
 
