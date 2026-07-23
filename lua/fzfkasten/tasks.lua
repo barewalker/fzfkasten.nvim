@@ -10,6 +10,7 @@ local fzf = require('fzf-lua')
 local config = require('fzfkasten.config')
 local utils = require('fzfkasten.utils')
 local buffer = require('fzfkasten.buffer')
+local kensaku = require('fzfkasten.kensaku')
 
 local M = {}
 
@@ -1288,9 +1289,8 @@ function M.pick(opts)
     -- from a romaji query; keep only the tasks whose text it matches so you can
     -- narrow a Japanese list without typing Japanese.
     local function contents(cb)
-        local re = opts.filter
         for _, task in ipairs(M.collect(opts)) do
-            if not re or re == "" or vim.fn.match(task.text, re) >= 0 then
+            if kensaku.matches(task.text, opts.filter) then
                 cb(to_entry(task))
             end
         end
@@ -1313,25 +1313,13 @@ function M.pick(opts)
         end
     end
 
-    -- Only advertise `<alt-/>` when kensaku is installed, so the header never
-    -- promises a filter that would just warn. `exists()` alone misses it until
-    -- the autoload script has run once, so also look for it on `runtimepath`.
-    local has_kensaku = vim.fn.exists("*kensaku#query") == 1
-        or vim.fn.globpath(vim.o.runtimepath, "autoload/kensaku.vim") ~= ""
-    local header = config.options.tasks.require_tag and opts.inbox
-        and "<ctrl-t> tag as task   <ctrl-x> mark done   <ctrl-d> cancel   <alt-a> add   <alt-u> undo"
-        or "<ctrl-x> mark done   <ctrl-d> cancel   <alt-a> add   <alt-u> undo"
-    if has_kensaku then
-        header = header .. "   <alt-/> romaji"
-    end
     local label = opts.inbox and "Inbox" or "Tasks"
-    -- Flag an active romaji filter in the prompt, so a short list reads as
-    -- "filtered", not "that is all there is".
-    local prompt = (opts.filter and opts.filter ~= "")
-        and (label .. " (romaji)> ") or (label .. "> ")
+    local header = kensaku.header_hint(config.options.tasks.require_tag and opts.inbox
+        and "<ctrl-t> tag as task   <ctrl-x> mark done   <ctrl-d> cancel   <alt-a> add   <alt-u> undo"
+        or "<ctrl-x> mark done   <ctrl-d> cancel   <alt-a> add   <alt-u> undo")
 
     fzf.fzf_exec(contents, vim.tbl_deep_extend("force", config.options.fzf, {
-        prompt = prompt,
+        prompt = kensaku.prompt(label, opts.filter),
         -- Entries carry paths relative to `home`; without this the previewer
         -- resolves them against Neovim's cwd and fails to stat the note.
         cwd = config.options.home,
@@ -1412,50 +1400,13 @@ function M.pick(opts)
                 field_index = "{q}",
             },
             -- Narrow the list by romaji: kensaku turns what you type into a Vim
-            -- regex over the task text, so `kaigi` finds 会議. Seeds the input
-            -- with the fzf query (`{q}`), because you often start typing romaji
-            -- in the picker, get no hits, then reach for this. Empty input
-            -- clears the filter. Like `<alt-a>` this steps out to a real input,
-            -- so it closes the picker and reopens it filtered via `M.pick`.
-            ['alt-/'] = {
-                fn = function(selected)
-                    local seed = (selected and selected[1]) or ""
-                    after_fzf(function()
-                        if not has_kensaku then
-                            vim.notify("[Fzfkasten] kensaku.vim is not available.",
-                                vim.log.levels.WARN)
-                            M.pick(opts)
-                            return
-                        end
-                        vim.ui.input({
-                            prompt = "Romaji filter (blank = clear): ",
-                            default = seed,
-                        }, function(input)
-                            -- Cancelled (<esc>): leave the current view untouched.
-                            if input == nil then
-                                M.pick(opts)
-                                return
-                            end
-                            local next_opts = vim.tbl_extend("force", opts, {})
-                            input = vim.trim(input)
-                            if input == "" then
-                                next_opts.filter = nil
-                            else
-                                local ok, re = pcall(vim.fn["kensaku#query"], input)
-                                if ok and type(re) == "string" and re ~= "" then
-                                    next_opts.filter = re
-                                else
-                                    vim.notify("[Fzfkasten] kensaku could not build a "
-                                        .. "query from " .. input, vim.log.levels.WARN)
-                                    next_opts.filter = opts.filter
-                                end
-                            end
-                            M.pick(next_opts)
-                        end)
-                    end)
-                end,
-                field_index = "{q}",
-            },
+            -- regex over the task text (matched in `contents`), so `kaigi` finds
+            -- 会議. Reopens the picker with the new filter in `opts.filter`.
+            ['alt-/'] = kensaku.action(function(re)
+                local next_opts = vim.tbl_extend("force", opts, {})
+                next_opts.filter = re
+                M.pick(next_opts)
+            end, opts.filter),
         },
     }))
 end
