@@ -254,7 +254,9 @@ A due date is `due:YYYY-MM-DD`, or `due:YYYY-MM-DDTHH:MM` when a time matters �
 | `<alt-/>` | Narrow the list by romaji: `kaigi` finds 会議. Needs [kensaku.vim](https://github.com/lambdalisue/kensaku.vim); empty input clears it |
 | `<alt-u>` | Put back the last line any of these rewrote |
 
-If your tasks are written in Japanese, fzf's own filter needs you to type Japanese to match them. **`<alt-/>` lets you narrow by romaji instead**: it asks for a query (seeded from whatever you had typed), hands it to [kensaku.vim](https://github.com/lambdalisue/kensaku.vim) to build a matcher, and reopens the list showing only the tasks it matches — so `kaigi` surfaces 会議 without leaving your keyboard's Latin layout. Empty input clears the filter; the prompt reads `Tasks (romaji)>` while one is active. The key only appears when kensaku is installed — it is an optional dependency, not required.
+If your notes are written in Japanese, fzf's own filter needs you to type Japanese to match them. **`<alt-/>` lets you narrow by romaji instead**: it asks for a query (seeded from whatever you had typed), hands it to [kensaku.vim](https://github.com/lambdalisue/kensaku.vim) to build a matcher, and reopens the picker showing only what matches — so `kaigi` surfaces 会議 without leaving your keyboard's Latin layout. Empty input clears the filter; the prompt gains `(romaji)` while one is active. The key only appears when kensaku is installed — it is an optional dependency, not required.
+
+The same `<alt-/>` works across fzfkasten, not just the task list: it narrows the note finder (`:FzfKastenFindNotes`) and link insertion (`:FzfKastenInsert`) by note title, and drives a romaji **content search** in `:FzfKastenSearchContent` — that last one is where it pays off most, since note bodies are mostly Japanese while filenames often are not.
 
 ### Choosing what counts as a task
 

@@ -9,9 +9,12 @@ COMMANDS
 - FzfKastenLog: Browse recent daily/weekly notes by date in one picker --
   existing notes preview and open, a date with no note is created from its
   template. <ctrl-x> enters a date manually. (FzfKastenPickDailyDate is an alias.)
-- FzfKastenFindNotes: Search for notes.
+- FzfKastenFindNotes: Search for notes. <alt-/> narrows by romaji via
+  kensaku.vim (matches note titles); blank input clears it.
 - FzfKastenTags: Search for tags.
-- FzfKastenInsert: Insert a link to a note.
+- FzfKastenInsert: Insert a link to a note. <alt-/> narrows by romaji too.
+- FzfKastenSearchContent: Live-grep note bodies. <alt-/> runs a romaji search
+  instead (kensaku.vim builds an rg pattern), which suits Japanese bodies.
 - FzfKastenTasks: Pick an open `- [ ]` task and jump to it. <ctrl-x> marks it
   done. <alt-a> captures a new task via a guided input (text, tags picked from
   those already in your notes, then a due date). <alt-/> narrows the list by
