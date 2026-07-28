@@ -1,0 +1,64 @@
+name: test
+
+# Runs the suite from a clean checkout, which is the point: the tests passing
+# on a working copy says nothing about them passing for anyone who clones this.
+# A gitignore pattern once swallowed tests/minimal_init.lua, and the suite could
+# not run at all from a clone -- silently, because nvim waits for input on the
+# unknown command rather than saying why.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # stable is what people run; nightly is the warning that a coming
+        # release will break something, while there is still time to look.
+        neovim: [stable, nightly]
+    name: neovim ${{ matrix.neovim }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The task scan shells out to it. Without it fzfkasten falls back to
+      # reading every note, which works but is not what anyone runs.
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
+      - name: Install Neovim (${{ matrix.neovim }})
+        run: |
+          set -euo pipefail
+          base="https://github.com/neovim/neovim/releases/download/${{ matrix.neovim }}"
+          # The asset was renamed in 0.10.4; try the current name, fall back.
+          if curl -fsSLo nvim.tar.gz "$base/nvim-linux-x86_64.tar.gz"; then
+            dir=nvim-linux-x86_64
+          else
+            curl -fsSLo nvim.tar.gz "$base/nvim-linux64.tar.gz"
+            dir=nvim-linux64
+          fi
+          tar xzf nvim.tar.gz
+          echo "$PWD/$dir/bin" >> "$GITHUB_PATH"
+
+      # tests/minimal_init.lua looks for these wherever a plugin manager put
+      # them; the lazy.nvim layout is the one it tries first.
+      - name: Install test dependencies
+        run: |
+          set -euo pipefail
+          lazy="$HOME/.local/share/nvim/lazy"
+          mkdir -p "$lazy"
+          git clone --depth 1 https://github.com/nvim-lua/plenary.nvim "$lazy/plenary.nvim"
+          git clone --depth 1 https://github.com/ibhagwan/fzf-lua "$lazy/fzf-lua"
+
+      - name: Versions
+        run: |
+          nvim --version | head -1
+          rg --version | head -1
+
+      - name: Run the suite
+        run: make test
