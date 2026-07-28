@@ -155,15 +155,30 @@ function M.rename_note(old_path, new_name_raw)
         return
     end
 
-    -- 1. Find all notes and update links
+    -- 1. Move the file, before touching anything else.
+    --
+    -- The order is the whole safety of this operation. Rewriting the links
+    -- first and then failing to move would point every one of them at a name
+    -- that does not exist -- the collection broken by a rename that never
+    -- happened, and nothing to undo it with. Moving first means a failure here
+    -- changes nothing at all.
+    local success, err = os.rename(old_path, new_path)
+    if not success then
+        vim.notify("Error renaming file: " .. tostring(err), vim.log.levels.ERROR)
+        return
+    end
+
+    -- 2. Point the links at the new name. Globbed after the move, so the note
+    -- itself is found at its new path and its own links are updated too.
     local all_notes_pattern = utils.join_path(config.options.home, "**/*." .. config.options.extension)
     local all_notes = vim.fn.glob(all_notes_pattern, true, true)
-    
+    local updated = 0
+
     for _, note_file in ipairs(all_notes) do
         local lines = vim.fn.readfile(note_file)
         local changed = false
         local new_lines = {}
-        
+
         for _, line in ipairs(lines) do
             -- Pattern to match [[old_name]] or [[old_name|alias]]
             local updated_line = line:gsub("%[%[(.-)%]%]", function(link_content)
@@ -181,17 +196,11 @@ function M.rename_note(old_path, new_name_raw)
             end)
             table.insert(new_lines, updated_line)
         end
-        
+
         if changed then
             vim.fn.writefile(new_lines, note_file)
+            updated = updated + 1
         end
-    end
-
-    -- 2. Rename the file
-    local success, err = os.rename(old_path, new_path)
-    if not success then
-        vim.notify("Error renaming file: " .. tostring(err), vim.log.levels.ERROR)
-        return
     end
 
     -- 3. Update buffers
@@ -202,7 +211,10 @@ function M.rename_note(old_path, new_name_raw)
     end
     buffer.edit(new_path)
 
-    vim.notify("Renamed '" .. old_name .. "' to '" .. new_name .. "' and updated links.", vim.log.levels.INFO)
+    -- Say how many notes were touched: this rewrote files you did not have
+    -- open, and "updated links" alone gives you no idea how much happened.
+    vim.notify(string.format("Renamed '%s' to '%s'; %d note%s updated.",
+        old_name, new_name, updated, updated == 1 and "" or "s"), vim.log.levels.INFO)
 end
 
 function M.rename_note_interactively(filepath)
