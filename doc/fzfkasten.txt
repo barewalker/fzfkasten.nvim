@@ -2,6 +2,13 @@
 
 Fzfkasten.nvim is a lightweight and fast Zettelkasten plugin for Neovim, using fzf-lua.
 
+HEALTH
+
+`:checkhealth fzfkasten` reports what fzfkasten needs from outside itself --
+the notes directory, fzf-lua and the `fzf` binary, ripgrep, the templates you
+configured, and where captured tasks will land. Reach for it first when a
+picker opens empty or a command quietly does nothing.
+
 COMMANDS
 
 - FzfKastenDaily: Open today's daily note.
