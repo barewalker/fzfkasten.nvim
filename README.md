@@ -313,6 +313,8 @@ Without leaving the list, `<c-e>`/`<c-y>`/`<c-f>`/`<c-b>` scroll it. Those mean 
 
 The preview reads a **loaded buffer** in preference to the file, so a note you have open and edited but not written previews as it actually is, not as the file on disk is lagging behind it.
 
+It belongs to the list rather than to the window it sits under, so it goes away the moment the list does — `<enter>` onto a note, a walk back through the jumplist, `:bnext`, closing the window. What it will not do is close while you are reading it: stepping in with `p` leaves the list on screen, and that is what it checks.
+
 ```lua
 tasks = {
   list = {

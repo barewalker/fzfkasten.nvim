@@ -208,6 +208,26 @@ local function open_preview()
     preview.shown = nil
 end
 
+-- Close the preview once the list is no longer on screen anywhere.
+--
+-- The preview belongs to the list, not to the window it happens to sit under:
+-- switch that window to something else -- `<enter>` onto a note, a walk back
+-- through the jumplist, `:bnext` -- and a split still showing a note nobody is
+-- pointing at is left behind. It is not enough to watch for the buffer being
+-- wiped, because leaving it merely hides it.
+--
+-- Deferred, because `BufWinLeave` fires *before* the buffer leaves and closing
+-- a window from inside it is refused. By the time the schedule runs the layout
+-- has settled, so "is the list displayed at all?" is a question worth asking --
+-- and it answers the case of the list being open in two windows for free.
+local function close_preview_unless_shown()
+    vim.schedule(function()
+        if not alive() or #vim.fn.win_findbuf(buf) == 0 then
+            close_preview()
+        end
+    end)
+end
+
 -- Scroll the preview without leaving the list. `keys` is a normal-mode scroll
 -- command; it runs in the preview window, so `<c-e>`/`<c-f>` mean there what
 -- they mean anywhere in Vim -- only the window they act on is different.
@@ -460,6 +480,19 @@ function M.open(opts)
         group = augroup,
         buffer = buf,
         callback = close_preview,
+    })
+    -- The list leaving its window, by whatever route.
+    vim.api.nvim_create_autocmd("BufWinLeave", {
+        group = augroup,
+        buffer = buf,
+        callback = close_preview_unless_shown,
+    })
+    -- ...and the window itself being closed, which `BufWinLeave` does not cover
+    -- when it is the preview that goes: this then finds the list still up and
+    -- leaves it alone, which is the point of asking rather than just closing.
+    vim.api.nvim_create_autocmd("WinClosed", {
+        group = augroup,
+        callback = close_preview_unless_shown,
     })
 
     open_preview()
