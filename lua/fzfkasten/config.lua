@@ -147,8 +147,10 @@ M.defaults = {
    },
    -- Buffer-local normal-mode keys. Unmodified letters on purpose -- the whole
    -- point of the buffer is that everything else is Vim's. `x`/`c`/`a`/`u`
-   -- read as delete/change/append/undo, which is most of what they do. Set one
-   -- to `false` to leave that key to Vim.
+   -- read as delete/change/append/undo, which is most of what they do.
+   --
+   -- Each entry is a key, a list of keys (all bound to that action), or
+   -- `false` to leave the key to Vim.
    keys = {
     open = "<CR>",   -- open the note at this task
     done = "x",      -- tick it off
@@ -171,7 +173,10 @@ M.defaults = {
     -- usual and `preview_back` comes out again.
     preview = "p",
     preview_toggle = "P",
-    preview_back = "q",              -- pressed inside the preview window
+    -- Pressed inside the preview window. Not `q`, which closes the list: one
+    -- key doing "leave this window" in one place and "close the whole thing"
+    -- in another is a coin toss you have to make every time.
+    preview_back = { "<Esc>", "<C-q>" },
     preview_half_page_down = "<C-d>",
     preview_half_page_up = "<C-u>",
     preview_page_down = "<C-f>",

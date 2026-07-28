@@ -57,6 +57,37 @@ local function preview_options()
     return options().preview or {}
 end
 
+-- The keys configured for an action, as a list. A single string is the usual
+-- case; a list binds several to the same action, for when two keys both feel
+-- right and there is no reason to make you pick. `false`/nil/"" means "leave
+-- that key to Vim".
+local function keys_for(name)
+    local configured = keys()[name]
+    if configured == nil or configured == false or configured == "" then
+        return {}
+    end
+    if type(configured) == "table" then
+        return configured
+    end
+    return { configured }
+end
+
+-- An action's description, calling it when it has to read the config.
+local function describe(action)
+    if type(action.desc) == "function" then
+        return action.desc()
+    end
+    return action.desc
+end
+
+local function map(lhs, action, target)
+    vim.keymap.set("n", lhs, action.fn, {
+        buffer = target,
+        nowait = true,
+        desc = describe(action),
+    })
+end
+
 local function alive()
     return buf ~= nil and vim.api.nvim_buf_is_valid(buf)
 end
@@ -194,17 +225,19 @@ local function open_preview()
         vim.bo[preview.buf].swapfile = false
         vim.bo[preview.buf].buflisted = false
         vim.bo[preview.buf].modifiable = false
-        -- Out of the preview and back to the list. Defaults to `q`, the same key
-        -- that leaves the list itself -- `q` gets you out of wherever you are --
-        -- but it is `keys.preview_back` like everything else, and `false` leaves
-        -- the key alone (`<c-w>p` still works, it being an ordinary window).
-        local back = keys().preview_back
-        if back and back ~= "" then
-            vim.keymap.set("n", back, function()
+        -- Out of the preview and back to the list. `keys.preview_back` like
+        -- everything else, and `false` leaves the keys alone -- `<c-w>p` still
+        -- works regardless, the preview being an ordinary window.
+        local back = {
+            desc = "Back to the task list",
+            fn = function()
                 if view and view.win and vim.api.nvim_win_is_valid(view.win) then
                     vim.api.nvim_set_current_win(view.win)
                 end
-            end, { buffer = preview.buf, nowait = true, desc = "Fzfkasten task list: back to the list" })
+            end,
+        }
+        for _, lhs in ipairs(keys_for("preview_back")) do
+            map(lhs, back, preview.buf)
         end
     end
 
@@ -342,74 +375,141 @@ local function on_task(fn)
     end
 end
 
+-- What each key does, and how it reads.
+--
+-- `desc` is what which-key and `:map` show, so it is written for whoever is
+-- looking at the popup wondering what the key does -- not the internal name of
+-- the action. "close" is a field name; "Close the task list" is an answer.
+-- A function is called at mapping time, for a description that has to read
+-- something out of the config.
 local ACTIONS = {
-    open = open_task,
-    done = on_task(function(task) tasks.toggle_at(task.path, task.lineno) end),
-    cancel = on_task(function(task) tasks.cancel_at(task.path, task.lineno) end),
-    tag = on_task(function(task) tasks.tag_at(task.path, task.lineno) end),
-    undo = function()
-        tasks.undo()
-        refresh()
-    end,
-    -- The capture steps out to a real input, which cannot run while this
-    -- buffer's mapping is still on the stack in some setups; deferring also
-    -- lets the redraw land after the note is written.
-    add = function()
-        vim.schedule(function()
-            tasks.capture(nil, refresh)
-        end)
-    end,
-    sort = function() reshape({ sort = tasks.next_sort(view.opts.sort) }) end,
-    reverse = function() reshape({ reverse = not view.opts.reverse }) end,
-    inbox = function()
-        if not config.options.tasks.require_tag then
-            vim.notify(
-                "[Fzfkasten] The inbox needs tasks.require_tag set; without it "
-                .. "every checkbox is already a task.",
-                vim.log.levels.WARN
-            )
-            return
-        end
-        reshape({ inbox = not view.opts.inbox })
-    end,
-    refresh = refresh,
-    close = function()
-        close_preview()
-        -- `:bdelete` rather than closing the window: in a split that leaves the
-        -- split you were reading in, and taking the whole window it puts back
-        -- whatever was there before.
-        pcall(vim.cmd, "bdelete " .. buf)
-    end,
-
-    -- Step into the preview, where every Vim key works because it is an
-    -- ordinary window: `j`, `gg`, `/`, `<c-d>`. `q` (or `<c-w>p`) comes back.
-    preview = function()
-        if not preview_alive() then
-            open_preview()
-            draw_preview(current_task())
-        end
-        if preview_alive() then
-            vim.api.nvim_set_current_win(preview.win)
-        end
-    end,
-    preview_toggle = function()
-        if preview_alive() then
+    open = {
+        desc = "Open the note here",
+        fn = open_task,
+    },
+    done = {
+        desc = "Tick this task off",
+        fn = on_task(function(task) tasks.toggle_at(task.path, task.lineno) end),
+    },
+    cancel = {
+        desc = "Drop this task (keeps the line)",
+        fn = on_task(function(task) tasks.cancel_at(task.path, task.lineno) end),
+    },
+    tag = {
+        desc = function()
+            local tag = config.options.tasks.require_tag
+            return tag and ("Make this mine (#" .. tag .. ")") or "Tag as a task"
+        end,
+        fn = on_task(function(task) tasks.tag_at(task.path, task.lineno) end),
+    },
+    undo = {
+        desc = "Put back the last line changed",
+        fn = function()
+            tasks.undo()
+            refresh()
+        end,
+    },
+    add = {
+        desc = "Capture a new task",
+        -- The capture steps out to a real input, which cannot run while this
+        -- buffer's mapping is still on the stack in some setups; deferring also
+        -- lets the redraw land after the note is written.
+        fn = function()
+            vim.schedule(function()
+                tasks.capture(nil, refresh)
+            end)
+        end,
+    },
+    sort = {
+        desc = "Order by priority / due / added",
+        fn = function() reshape({ sort = tasks.next_sort(view.opts.sort) }) end,
+    },
+    reverse = {
+        desc = "Reverse the order",
+        fn = function() reshape({ reverse = not view.opts.reverse }) end,
+    },
+    inbox = {
+        desc = "Switch between tasks and inbox",
+        fn = function()
+            if not config.options.tasks.require_tag then
+                vim.notify(
+                    "[Fzfkasten] The inbox needs tasks.require_tag set; without it "
+                    .. "every checkbox is already a task.",
+                    vim.log.levels.WARN
+                )
+                return
+            end
+            reshape({ inbox = not view.opts.inbox })
+        end,
+    },
+    refresh = {
+        desc = "Re-scan the notes",
+        fn = refresh,
+    },
+    close = {
+        desc = "Close the task list",
+        fn = function()
             close_preview()
-        else
-            open_preview()
-            preview.shown = nil
-            draw_preview(current_task())
-        end
-    end,
+            -- `:bdelete` rather than closing the window: in a split that leaves
+            -- the split you were reading in, and taking the whole window it puts
+            -- back whatever was there before.
+            pcall(vim.cmd, "bdelete " .. buf)
+        end,
+    },
+
+    preview = {
+        desc = "Go into the preview",
+        -- Every Vim key works in there because it is an ordinary window: `j`,
+        -- `gg`, `/`, `<c-d>`. `preview_back` (or `<c-w>p`) comes out again.
+        fn = function()
+            if not preview_alive() then
+                open_preview()
+                draw_preview(current_task())
+            end
+            if preview_alive() then
+                vim.api.nvim_set_current_win(preview.win)
+            end
+        end,
+    },
+    preview_toggle = {
+        desc = "Show or hide the preview",
+        fn = function()
+            if preview_alive() then
+                close_preview()
+            else
+                open_preview()
+                preview.shown = nil
+                draw_preview(current_task())
+            end
+        end,
+    },
     -- Vim's three scroll pairs, all pointed at the preview. `<c-d>`/`<c-u>` is
     -- the one hands actually reach for, so leaving it on the list -- which is a
     -- dozen rows you move through with `j` -- spent it on the wrong window.
-    preview_half_page_down = function() scroll_preview("<C-d>") end,
-    preview_half_page_up = function() scroll_preview("<C-u>") end,
-    preview_page_down = function() scroll_preview("<C-f>") end,
-    preview_page_up = function() scroll_preview("<C-b>") end,
-    preview_down = function() scroll_preview("<C-e>") end,
-    preview_up = function() scroll_preview("<C-y>") end,
+    preview_half_page_down = {
+        desc = "Preview: half page down",
+        fn = function() scroll_preview("<C-d>") end,
+    },
+    preview_half_page_up = {
+        desc = "Preview: half page up",
+        fn = function() scroll_preview("<C-u>") end,
+    },
+    preview_page_down = {
+        desc = "Preview: page down",
+        fn = function() scroll_preview("<C-f>") end,
+    },
+    preview_page_up = {
+        desc = "Preview: page up",
+        fn = function() scroll_preview("<C-b>") end,
+    },
+    preview_down = {
+        desc = "Preview: one line down",
+        fn = function() scroll_preview("<C-e>") end,
+    },
+    preview_up = {
+        desc = "Preview: one line up",
+        fn = function() scroll_preview("<C-y>") end,
+    },
 }
 
 -- Where the list opens. Everything but "full" leaves the window you were in, so
@@ -467,13 +567,8 @@ end
 
 local function apply_keys()
     for name, action in pairs(ACTIONS) do
-        local lhs = keys()[name]
-        if lhs and lhs ~= "" then
-            vim.keymap.set("n", lhs, action, {
-                buffer = buf,
-                nowait = true,
-                desc = "Fzfkasten task list: " .. name,
-            })
+        for _, lhs in ipairs(keys_for(name)) do
+            map(lhs, action, buf)
         end
     end
 end
