@@ -234,61 +234,73 @@ local function get_note_name(filepath)
         return nil -- Return nil if fnamemodify returns invalid filename
     end
 
+    -- A leading dot is not an extension separator, so ".bashrc" keeps its name
+    -- rather than becoming the empty string -- which would otherwise be a note
+    -- name that every empty link "[[]]" in the collection matches.
     local basename = filename_with_ext:match("^(.*)%.[^%.]*$")
-    if basename then
+    if basename and basename ~= "" then
         return basename
     else
         return filename_with_ext -- No extension, return as is (e.g., "my_note", ".bashrc")
     end
 end
 
--- Actual implementation of show_backlinks
-function M.show_backlinks(filepath)
-    vim.notify("DEBUG: show_backlinks called with filepath: '" .. tostring(filepath) .. "'", vim.log.levels.INFO)
-    local target_note_name = get_note_name(filepath)
-    if not target_note_name then
-        vim.notify("Could not determine note name from path: " .. tostring(filepath), vim.log.levels.ERROR)
-        return
+-- Every line in the collection that links to `filepath`, as "rel:lineno: text"
+-- with `rel` relative to `home`.
+--
+-- Split out from the picker so that what counts as a link can be tested. It is
+-- the same question `follow_link` and `rename_note` answer, and all three have
+-- to answer it alike: `[[note#heading]]` is a link to `note`. Read as a name of
+-- its own it matches nothing, and the note it points at then shows no backlink
+-- from it -- which reads as "nothing links here", not as "the anchor threw me".
+--
+-- Relative to `home` rather than to the working directory because that is what
+-- the picker's action resolves against. A `:~:.` path from a cwd outside the
+-- collection is neither relative nor absolute -- `~/notes/a.md` -- and gets the
+-- notes directory prepended to it, so the entry opens nothing.
+--- @return string[]|nil entries, string|nil note_name
+local function collect_backlinks(filepath)
+    local target = get_note_name(filepath)
+    if not target then
+        return nil, nil
     end
+
+    local home = config.options.home
+    local pattern = utils.join_path(home, "**/*." .. config.options.extension)
+    -- Resolved both sides: the path we were handed and the ones glob returns
+    -- are the same file spelt differently often enough (a symlinked collection,
+    -- a relative argument) that comparing them raw lists the note under itself.
+    local self_path = vim.fn.resolve(vim.fn.fnamemodify(filepath, ":p"))
+    local link_pattern = config.options.patterns.link
     local backlinks = {}
 
-    local all_note_files_pattern = utils.join_path(config.options.home, "**/*." .. config.options.extension)
-    local all_note_files = vim.fn.glob(all_note_files_pattern, true, true)
-
-    if not all_note_files or #all_note_files == 0 then
-        vim.notify("No other notes found in your Zettelkasten.", vim.log.levels.INFO)
-        return
-    end
-
-    -- Construct a regex to find links to the target note
-    -- This regex looks for [[target_note_name]] or [[target_note_name|alias]]
-    local link_search_pattern = "\\[\\[" .. target_note_name:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1") .. "(\\|.-)?\\]\\]"
-
-    for _, note_file in ipairs(all_note_files) do
-        if note_file ~= filepath then -- Don't search in the current file itself
-            local file = io.open(note_file, "r")
-            if file then
-                local content = file:read("*a")
-                file:close()
-
-                -- Split content into lines to search for backlinks per line
-                for line_num, line in ipairs(vim.split(content, "\n", { plain = true })) do
-                    for link_full_content in string.gmatch(line, config.options.patterns.link) do
-                        -- link_full_content will be "1on1" or "1on1|alias"
-                        local link_target_name = link_full_content:match("^(.-)|.*$") or link_full_content
-                        if link_target_name == target_note_name then
-                            -- Found a backlink
-                            table.insert(backlinks, string.format("%s:%d: %s",
-                                vim.fn.fnamemodify(note_file, ":~:."), -- Relative path to file
-                                line_num,
-                                line:match("^(%s*.-)%s*$") -- Trim leading/trailing whitespace
-                            ))
-                            break -- Only add once per line if multiple links point to the same target
-                        end
+    for _, note_file in ipairs(vim.fn.glob(pattern, true, true) or {}) do
+        if vim.fn.resolve(vim.fn.fnamemodify(note_file, ":p")) ~= self_path then
+            local ok, lines = pcall(vim.fn.readfile, note_file)
+            for lineno, line in ipairs(ok and lines or {}) do
+                for inner in line:gmatch(link_pattern) do
+                    local name = utils.split_link(inner)
+                    if name == target then
+                        backlinks[#backlinks + 1] = string.format("%s:%d: %s",
+                            note_file:gsub("^" .. vim.pesc(home) .. "/?", ""),
+                            lineno,
+                            vim.trim(line))
+                        break -- one entry per line, however many links it holds
                     end
                 end
             end
         end
+    end
+
+    return backlinks, target
+end
+
+-- Actual implementation of show_backlinks
+function M.show_backlinks(filepath)
+    local backlinks, target_note_name = collect_backlinks(filepath)
+    if not backlinks then
+        vim.notify("Could not determine note name from path: " .. tostring(filepath), vim.log.levels.ERROR)
+        return
     end
 
     if #backlinks == 0 then
@@ -687,5 +699,15 @@ function M.find_weekly_notes_picker()
         }
     }, config.options.notes.weekly.fzf_opts or {}))
 end
+
+-- Reading a link is the plugin's one piece of parsing that runs on every note,
+-- and none of it is reachable from outside: the cursor lookup is a local, and
+-- the backlink walk sat inside a picker. Exposed for the tests rather than
+-- widened into the API.
+M._test = {
+    link_under_cursor = link_under_cursor,
+    get_note_name = get_note_name,
+    collect_backlinks = collect_backlinks,
+}
 
 return M

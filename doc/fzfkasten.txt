@@ -60,6 +60,11 @@ COMMANDS
   cursor. An anchor puts the cursor on that heading ([[note#Results]] opens
   note at its "## Results"), matched on the heading text, case-insensitively;
   a heading that is not there opens the note anyway and warns.
+- FzfKastenShowBacklinks: List every line in the collection that links to the
+  current note. [[note]], [[note|alias]] and [[note#heading]] all count; only
+  whole names match, so [[note-old]] is not a link to [[note]]. The note's own
+  links to itself are left out, whether or not the path you reached it by went
+  through a symlink.
 - FzfKastenRenameNote: Rename the current note and retarget every link to it:
   [[old]], [[old|alias]], [[old#heading]] and [[old#heading|alias]] all follow,
   anchor and alias untouched. Only whole names match, so [[old-notes]] is not a
