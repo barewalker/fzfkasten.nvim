@@ -1697,6 +1697,12 @@ M._test = {
     parse_frontmatter = parse_frontmatter,
     sort_tasks = sort_tasks,
     note_date = note_date,
+    -- The undo stack is module state, so a suite that exercises the writers has
+    -- to be able to start each case from empty -- otherwise one case's rewrite
+    -- is what the next case's undo puts back.
+    reset_history = function() history = {} end,
+    history_size = function() return #history end,
+    HISTORY_MAX = HISTORY_MAX,
     indent_width = indent_width,
     bullet_text = bullet_text,
     next_sort = M.next_sort,
