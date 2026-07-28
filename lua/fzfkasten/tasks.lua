@@ -5,6 +5,13 @@
 -- call re-scans with ripgrep. Anything else that can edit markdown -- a mobile
 -- git client, another editor, a script -- therefore stays in sync for free,
 -- because the notes *are* the ledger.
+--
+-- Checkboxes nest. A checkbox indented under another is a subtask of it, and
+-- inherits `require_tag` from it: deciding an item is yours is a decision about
+-- the whole item, so its steps don't each need tagging. The picker keeps a
+-- subtask under the item it belongs to, and a task hanging off a plain bullet
+-- carries that bullet along -- a task line read on its own is the context the
+-- list otherwise loses.
 
 local fzf = require('fzf-lua')
 local config = require('fzfkasten.config')
@@ -232,6 +239,25 @@ local function scannable_lines(lines, fm_end)
         end
     end
     return scannable
+end
+
+-- How deep a list item sits, in display columns. A tab counts as four so a
+-- note that mixes tabs and spaces still nests the way it looks like it does.
+local function indent_width(line)
+    local width = 0
+    for ch in (line:match("^[ \t]*") or ""):gmatch(".") do
+        width = width + (ch == "\t" and 4 or 1)
+    end
+    return width
+end
+
+-- The text of a list item that is *not* a checkbox, or nil when the line is
+-- neither. A bullet holds no task, but tasks nest under it, and it is the
+-- context they lose when the picker shows the task line by itself.
+--
+-- Checkboxes match this shape too, so callers test for one first.
+local function bullet_text(line)
+    return line:match("^%s*[-*+]%s+(.+)$") or line:match("^%s*%d+[%.%)]%s+(.+)$")
 end
 
 local function is_always(rel)
@@ -543,20 +569,79 @@ local function due_line(line, date)
     return stripped .. " due:" .. date
 end
 
-local function sort_tasks(tasks)
+-- What a task sorts by: the outermost item it hangs off, or itself when it
+-- hangs off nothing. Sorting a subtask on its own priority would scatter the
+-- steps of one job across the list, which is exactly the context nesting is
+-- there to keep. `root_lineno` is set for every collected task, so its absence
+-- marks a task table that never went through `M.collect` (the suite builds
+-- some by hand) and falls back to the task's own fields.
+local function sort_key(task)
+    if task.root_lineno then
+        return task.root_priority, task.root_due, task.root_lineno
+    end
+    return task.priority, task.due, task.lineno
+end
+
+-- The orderings the picker cycles through with `<alt-s>`, in that order.
+--
+--   priority : what you decided matters, then what runs out first.
+--   due      : what runs out first, whatever you decided about it.
+--   added    : the order they were written down -- note date, then position in
+--              the note. Captures append, so within one note this is capture
+--              order; across notes it is when the note was written.
+--
+-- `priority` is first because it is the default, and `<alt-s>` from the last
+-- mode comes back to it.
+local SORTS = { "priority", "due", "added" }
+
+--- The mode after `sort`, wrapping round. An unknown mode (or nil) is treated
+--- as the default, so cycling from a stale value lands somewhere sensible.
+--- Public because both the picker and the task list buffer cycle the ordering,
+--- and they have to cycle it the same way.
+--- @param sort string|nil
+--- @return string
+function M.next_sort(sort)
+    for i, name in ipairs(SORTS) do
+        if name == sort then
+            return SORTS[i % #SORTS + 1]
+        end
+    end
+    return SORTS[2]
+end
+
+-- The keys a task orders by, most significant first. All of them fall back to a
+-- sentinel that sorts last, so "no due date" means "not urgent" rather than
+-- "first". Everything is taken from the task's root (`sort_key`), which is what
+-- keeps a subtask travelling with the item it is a step of.
+local function sort_fields(task, sort)
+    local priority, due, lineno = sort_key(task)
+    if sort == "due" then
+        return { due or "9999-99-99", priority or "~", task.path, lineno }
+    elseif sort == "added" then
+        return { task.date or "9999-99-99", task.path, lineno }
+    end
+    return { priority or "~", due or "9999-99-99", task.path, lineno }
+end
+
+--- Order `tasks` in place.
+--- @param tasks table
+--- @param sort string|nil one of `SORTS`; anything else means "priority"
+--- @param reverse boolean|nil flip the order of the items, not of their steps
+local function sort_tasks(tasks, sort, reverse)
     table.sort(tasks, function(a, b)
-        -- Prioritised first, then most urgent, then stable by location.
-        local ap, bp = a.priority or "~", b.priority or "~"
-        if ap ~= bp then
-            return ap < bp
+        local af, bf = sort_fields(a, sort), sort_fields(b, sort)
+        for i = 1, #af do
+            if af[i] ~= bf[i] then
+                local before = af[i] < bf[i]
+                if reverse then
+                    return not before
+                end
+                return before
+            end
         end
-        local ad, bd = a.due or "9999-99-99", b.due or "9999-99-99"
-        if ad ~= bd then
-            return ad < bd
-        end
-        if a.path ~= b.path then
-            return a.path < b.path
-        end
+        -- Same item: its subtasks keep the order they are written in, whichever
+        -- way the list is pointing. Reversing the steps of a job would make it
+        -- unreadable, and the steps are not what you asked to sort.
         return a.lineno < b.lineno
     end)
     return tasks
@@ -564,12 +649,19 @@ end
 
 --- Collect tasks from every note under `home`.
 --- @param opts table|nil `{ since_days = number|false, done = boolean,
----   cancelled = boolean, inbox = boolean }`. `since_days = false` disables the
----   date window for this call; `inbox = true` returns the checkboxes
----   `require_tag` leaves out. `done` and `cancelled` each add that state to
----   the result; both are left out otherwise.
+---   cancelled = boolean, inbox = boolean, sort = string, reverse = boolean }`.
+---   `since_days = false` disables the date window for this call; `inbox = true`
+---   returns the checkboxes `require_tag` leaves out. `done` and `cancelled`
+---   each add that state to the result; both are left out otherwise. `sort` is
+---   "priority" (the default), "due" or "added", and `reverse` flips it.
 --- @return table list of `{ text, done, done_at, cancelled, cancelled_at,
----   priority, due, path, rel, lineno, date }`
+---   priority, due, path, rel, lineno, date, depth, parent, context, children,
+---   children_closed, orphaned }`. The last six describe the nesting: `depth`
+---   is how many checkboxes this one sits inside, `parent` the task table it
+---   sits in (nil at the top), `context` the text of the list item directly
+---   above it whatever that is, `children`/`children_closed` count its subtasks
+---   and how many are done or cancelled, and `orphaned` marks a subtask whose
+---   parent the filters dropped.
 function M.collect(opts)
     opts = opts or {}
     local o = config.options.tasks
@@ -606,6 +698,11 @@ function M.collect(opts)
 
                 if not skip_note then
                     local scannable = scannable_lines(lines, fm_end)
+                    -- The list items still open above the line being read,
+                    -- outermost last. A checkbox indented past the one on top
+                    -- is nested inside it, which is what makes a subtask a
+                    -- subtask -- and how it inherits the tag.
+                    local stack = {}
                     for lineno = fm_end + 1, #lines do
                         if scannable[lineno] then
                             local line = lines[lineno]
@@ -619,34 +716,93 @@ function M.collect(opts)
                                 raw = line:match(o.patterns.cancelled)
                                 cancelled = raw ~= nil
                             end
-                            if raw then
-                                local text, priority, due, done_at, cancelled_at =
-                                    parse_task_text(raw, o)
-                                local task = {
-                                    text = text,
-                                    done = done,
-                                    done_at = done_at,
-                                    cancelled = cancelled,
-                                    cancelled_at = cancelled_at,
-                                    priority = priority,
-                                    due = due,
-                                    path = path,
-                                    rel = rel,
-                                    lineno = lineno,
-                                    date = date,
-                                }
-                                -- With `require_tag` set, a checkbox is a task
-                                -- only if tagged; the rest are inbox.
-                                local tagged = not o.require_tag or has_tag(text, o.require_tag)
-                                -- A tagged task never ages out. Tagging it was
-                                -- a decision; expiring it by date would hide
-                                -- work that was explicitly accepted, and it
-                                -- would fall out of the inbox too -- invisible
-                                -- in both views. `since_days` bounds the inbox,
-                                -- not your commitments.
-                                if not (aged_out and not tagged)
-                                    and tagged == wants_tagged and keep(task) then
-                                    table.insert(tasks, task)
+                            local bullet = not raw and bullet_text(line) or nil
+
+                            if raw or bullet then
+                                local indent = indent_width(line)
+                                -- Close every item this line is a sibling of,
+                                -- or has outdented past.
+                                while #stack > 0 and stack[#stack].indent >= indent do
+                                    table.remove(stack)
+                                end
+                                local parent = stack[#stack]
+
+                                if not raw then
+                                    -- A bullet is never a task and never
+                                    -- introduces the tag, but it doesn't break
+                                    -- the chain either: it passes down whatever
+                                    -- the item above it decided, so a checkbox
+                                    -- under a note under a task is still that
+                                    -- task's subtask.
+                                    table.insert(stack, {
+                                        indent = indent,
+                                        text = bullet,
+                                        tagged = parent ~= nil and parent.tagged or false,
+                                        depth = parent and parent.depth or 0,
+                                        task = parent and parent.task or nil,
+                                        root = parent and parent.root or nil,
+                                    })
+                                else
+                                    local text, priority, due, done_at, cancelled_at =
+                                        parse_task_text(raw, o)
+                                    local task = {
+                                        text = text,
+                                        done = done,
+                                        done_at = done_at,
+                                        cancelled = cancelled,
+                                        cancelled_at = cancelled_at,
+                                        priority = priority,
+                                        due = due,
+                                        path = path,
+                                        rel = rel,
+                                        lineno = lineno,
+                                        date = date,
+                                        depth = parent and parent.depth or 0,
+                                        parent = parent and parent.task or nil,
+                                        context = parent and parent.text or nil,
+                                    }
+                                    -- With `require_tag` set, a checkbox is a
+                                    -- task only if tagged; the rest are inbox.
+                                    -- A subtask of your task is yours too:
+                                    -- tagging the item was the decision, and
+                                    -- repeating it on every step of it is
+                                    -- bookkeeping with nothing to show for it.
+                                    local tagged = not o.require_tag
+                                        or has_tag(text, o.require_tag)
+                                        or (parent ~= nil and parent.tagged)
+                                    -- The outermost item this one hangs off, so
+                                    -- `sort_tasks` can keep a subtask under it
+                                    -- rather than let its own priority scatter
+                                    -- it across the list.
+                                    local root = (parent and parent.root) or task
+                                    task.root_lineno = root.lineno
+                                    task.root_priority = root.priority
+                                    task.root_due = root.due
+                                    if task.parent then
+                                        local p = task.parent
+                                        p.children = (p.children or 0) + 1
+                                        if done or cancelled then
+                                            p.children_closed = (p.children_closed or 0) + 1
+                                        end
+                                    end
+                                    table.insert(stack, {
+                                        indent = indent,
+                                        text = text,
+                                        tagged = tagged,
+                                        depth = task.depth + 1,
+                                        task = task,
+                                        root = root,
+                                    })
+                                    -- A tagged task never ages out. Tagging it
+                                    -- was a decision; expiring it by date would
+                                    -- hide work that was explicitly accepted,
+                                    -- and it would fall out of the inbox too --
+                                    -- invisible in both views. `since_days`
+                                    -- bounds the inbox, not your commitments.
+                                    if not (aged_out and not tagged)
+                                        and tagged == wants_tagged and keep(task) then
+                                        table.insert(tasks, task)
+                                    end
                                 end
                             end
                         end
@@ -664,7 +820,20 @@ function M.collect(opts)
     if not opts.cancelled then
         tasks = vim.tbl_filter(function(t) return not t.cancelled end, tasks)
     end
-    sort_tasks(tasks)
+
+    -- A subtask whose parent the filters just dropped -- an open step under a
+    -- finished item, an untagged parent in the inbox -- has no row above it to
+    -- read the context off. Mark it so the picker spells the parent out inline
+    -- instead of indenting it under nothing.
+    local shown = {}
+    for _, task in ipairs(tasks) do
+        shown[task] = true
+    end
+    for _, task in ipairs(tasks) do
+        task.orphaned = task.parent ~= nil and not shown[task.parent]
+    end
+
+    sort_tasks(tasks, opts.sort, opts.reverse)
 
     if type(o.on_collect) == "function" then
         pcall(o.on_collect, tasks)
@@ -672,20 +841,71 @@ function M.collect(opts)
     return tasks
 end
 
--- "rel:lineno: (A) text  [due ...]" -- the same shape show_backlinks uses, so
--- fzf-lua's entry_to_file parses it with `cwd = home`.
-local function to_entry(task)
+-- Task text as the list shows it: without the `due:` token, which gets its own
+-- column, and without `require_tag`, which every task carries anyway -- both
+-- would only spend width saying what the list already says.
+local function display_text(text)
     local o = config.options.tasks
-    local prefix = task.priority and string.format("(%s) ", task.priority) or ""
-    local text = task.text:gsub(o.patterns.due, "")
-    -- Every task carries `require_tag`, so showing it wastes width.
+    text = text:gsub(o.patterns.due, "")
     if o.require_tag then
         text = text:gsub("#" .. vim.pesc(o.require_tag) .. "%f[%W]", "")
     end
-    text = " " .. text .. " "
-    text = text:gsub("%s+", " ")
+    local squeezed = (" " .. text .. " "):gsub("%s+", " ")
+    return vim.trim(squeezed)
+end
+
+-- How much of a parent bullet an entry spells out before cutting it. Context
+-- is prose and runs long; past this it costs more width than it gives back.
+local CONTEXT_WIDTH = 40
+
+-- Cut `text` to `width` display columns, marking the cut. Counted in columns
+-- rather than characters because the notes are largely Japanese, where one
+-- character is two columns wide.
+local function truncate(text, width)
+    if vim.fn.strdisplaywidth(text) <= width then
+        return text
+    end
+    for i = vim.fn.strchars(text), 1, -1 do
+        local cut = vim.fn.strcharpart(text, 0, i)
+        if vim.fn.strdisplaywidth(cut) <= width - 1 then
+            return cut .. "…"
+        end
+    end
+    return "…"
+end
+
+--- How a task reads on one line, without saying which note it came from: the
+--- indent that puts a subtask under its parent, the priority, the text, how far
+--- along its steps are, the due date, and the context it hangs off.
+---
+--- A subtask is indented under the item it belongs to, and an item with
+--- subtasks shows how many are settled. When the parent isn't in the list --
+--- it's a plain bullet, or the filters dropped it -- there is no row above to
+--- read the context off, so the parent's text is spelled out on the line.
+---
+--- Public because the picker and the task list buffer both render it, and a
+--- task that read differently in the two would be a task you had to recognise
+--- twice.
+--- @param task table one entry from `M.collect`
+--- @return string
+function M.entry_text(task)
+    local depth = task.depth or 0
+    local nested = depth > 0 and task.parent ~= nil and not task.orphaned
+    local lead = nested and (string.rep("  ", depth) .. "↳ ") or ""
+    local prefix = task.priority and string.format("(%s) ", task.priority) or ""
+    local children = task.children or 0
+    local progress = children > 0
+        and string.format("  [%d/%d]", task.children_closed or 0, children) or ""
     local due = task.due and string.format("  [due %s]", task.due) or ""
-    return string.format("%s:%d: %s%s%s", task.rel, task.lineno, prefix, vim.trim(text), due)
+    local context = (not nested) and task.context
+        and ("  ← " .. truncate(display_text(task.context), CONTEXT_WIDTH)) or ""
+    return lead .. prefix .. display_text(task.text) .. progress .. due .. context
+end
+
+-- "rel:lineno: (A) text  [due ...]" -- the same shape show_backlinks uses, so
+-- fzf-lua's entry_to_file parses it with `cwd = home`.
+local function to_entry(task)
+    return string.format("%s:%d: %s", task.rel, task.lineno, M.entry_text(task))
 end
 
 --- Flip a single checkbox in a note on disk, keeping any loaded buffer in step.
@@ -1313,10 +1533,26 @@ function M.pick(opts)
         end
     end
 
+    -- The ordering goes in the prompt, not the header: it is state, and it has
+    -- to be readable at a glance to tell "nothing urgent" from "sorted by
+    -- something else". The default ordering is left unsaid -- a prompt that
+    -- always carries a tag is one you stop reading.
     local label = opts.inbox and "Inbox" or "Tasks"
+    if (opts.sort and opts.sort ~= SORTS[1]) or opts.reverse then
+        label = label .. " (" .. (opts.sort or SORTS[1])
+            .. (opts.reverse and ", reversed" or "") .. ")"
+    end
     local header = kensaku.header_hint(config.options.tasks.require_tag and opts.inbox
-        and "<ctrl-t> tag as task   <ctrl-x> mark done   <ctrl-d> cancel   <alt-a> add   <alt-u> undo"
-        or "<ctrl-x> mark done   <ctrl-d> cancel   <alt-a> add   <alt-u> undo")
+        and "<ctrl-t> tag as task   <ctrl-x> mark done   <ctrl-d> cancel   <alt-a> add   <alt-u> undo   <alt-s> sort   <alt-r> reverse"
+        or "<ctrl-x> mark done   <ctrl-d> cancel   <alt-a> add   <alt-u> undo   <alt-s> sort   <alt-r> reverse")
+
+    -- Reopen with `changed` merged in, carrying the fzf query over so changing
+    -- the order doesn't throw away what you had typed to narrow the list.
+    local function reopen(changed, query)
+        local next_opts = vim.tbl_extend("force", opts, changed)
+        next_opts.query = query
+        after_fzf(function() M.pick(next_opts) end)
+    end
 
     fzf.fzf_exec(contents, vim.tbl_deep_extend("force", config.options.fzf, {
         prompt = kensaku.prompt(label, opts.filter),
@@ -1329,6 +1565,9 @@ function M.pick(opts)
             ["--with-nth"] = "3..",
             ["--no-sort"] = "",
             ["--header"] = header,
+            -- Restored when the picker reopens itself (a sort change); nil on a
+            -- fresh open, which fzf reads as no query.
+            ["--query"] = opts.query,
         },
         actions = {
             ['default'] = open,
@@ -1394,8 +1633,31 @@ function M.pick(opts)
                     -- Wait for this picker to close before opening the input,
                     -- or it races the teardown -- see `after_fzf`.
                     after_fzf(function()
-                        M.capture(seed, function() M.pick(opts) end)
+                        -- Reopen without the query: the new task has to be
+                        -- visible for the reopen to be worth anything, and
+                        -- whatever narrowed the list before probably hides it.
+                        local next_opts = vim.tbl_extend("force", opts, {})
+                        next_opts.query = nil
+                        M.capture(seed, function() M.pick(next_opts) end)
                     end)
+                end,
+                field_index = "{q}",
+            },
+            -- Cycle the ordering: priority -> due -> added -> priority. Not a
+            -- `reload`, which would re-run `contents` but leave the prompt
+            -- claiming the old order; reopening is what keeps the two agreeing.
+            -- `field_index = "{q}"` hands the query over so it survives the trip.
+            ['alt-s'] = {
+                fn = function(selected)
+                    reopen({ sort = M.next_sort(opts.sort) }, selected and selected[1])
+                end,
+                field_index = "{q}",
+            },
+            -- Flip the order. Independent of which ordering is in force, so
+            -- "least urgent first" and "oldest first" are each one more key.
+            ['alt-r'] = {
+                fn = function(selected)
+                    reopen({ reverse = not opts.reverse }, selected and selected[1])
                 end,
                 field_index = "{q}",
             },
@@ -1405,6 +1667,10 @@ function M.pick(opts)
             ['alt-/'] = kensaku.action(function(re)
                 local next_opts = vim.tbl_extend("force", opts, {})
                 next_opts.filter = re
+                -- The romaji query is what narrows now; keeping the fzf query
+                -- that seeded it would filter the results a second time, by
+                -- romaji they don't contain, and show nothing.
+                next_opts.query = nil
                 M.pick(next_opts)
             end, opts.filter),
         },
@@ -1431,6 +1697,14 @@ M._test = {
     parse_frontmatter = parse_frontmatter,
     sort_tasks = sort_tasks,
     note_date = note_date,
+    indent_width = indent_width,
+    bullet_text = bullet_text,
+    next_sort = M.next_sort,
+    sort_fields = sort_fields,
+    SORTS = SORTS,
+    display_text = display_text,
+    truncate = truncate,
+    to_entry = to_entry,
 }
 
 return M

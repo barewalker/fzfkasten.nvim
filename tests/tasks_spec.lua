@@ -416,3 +416,311 @@ describe("note_date", function()
         assert.is_nil(t.note_date("/x/standup.md", {}, {}))
     end)
 end)
+
+describe("indent_width", function()
+    it("counts spaces, and a tab as four columns", function()
+        assert.are.equal(0, t.indent_width("- [ ] a"))
+        assert.are.equal(2, t.indent_width("  - [ ] a"))
+        assert.are.equal(4, t.indent_width("\t- [ ] a"))
+        assert.are.equal(6, t.indent_width("\t  - [ ] a"))
+    end)
+end)
+
+describe("bullet_text", function()
+    it("reads a plain list item, ordered or not", function()
+        assert.are.equal("context", t.bullet_text("- context"))
+        assert.are.equal("context", t.bullet_text("  * context"))
+        assert.are.equal("step one", t.bullet_text("    1. step one"))
+    end)
+
+    it("is nil for prose and headings", function()
+        assert.is_nil(t.bullet_text("just a line"))
+        assert.is_nil(t.bullet_text("# heading"))
+    end)
+
+    -- Checkboxes match the bullet shape too, so collect() tests for a checkbox
+    -- first; this pins that the overlap is real and not an accident.
+    it("also matches a checkbox, which callers rule out first", function()
+        assert.are.equal("[ ] a", t.bullet_text("- [ ] a"))
+    end)
+end)
+
+describe("truncate", function()
+    it("leaves text that fits", function()
+        assert.are.equal("short", t.truncate("short", 40))
+    end)
+
+    it("cuts by display column, not character, and marks the cut", function()
+        -- Each of these is two columns wide, so eight of them fill 16 columns.
+        local out = t.truncate("あいうえおかきくけこ", 10)
+        assert.is_true(vim.fn.strdisplaywidth(out) <= 10)
+        assert.are.equal("…", out:sub(-3))
+    end)
+end)
+
+-- Nesting is the one behaviour here that needs files on disk: the ancestor
+-- stack is built while scanning a note, so there is no pure helper to poke at.
+describe("collect: nested tasks", function()
+    local home
+
+    local function note(name, lines)
+        vim.fn.writefile(lines, home .. "/" .. name)
+    end
+
+    before_each(function()
+        home = vim.fn.tempname()
+        vim.fn.mkdir(home, "p")
+        setup({ home = home, tasks = { require_tag = "todo" } })
+    end)
+
+    after_each(function()
+        vim.fn.delete(home, "rf")
+    end)
+
+    it("gives a subtask its parent's tag", function()
+        note("n.md", {
+            "- [ ] parent #todo",
+            "  - [ ] child",
+        })
+        local out = tasks.collect()
+        assert.are.equal(2, #out)
+        assert.are.equal("parent #todo", out[1].text)
+        assert.are.equal("child", out[2].text)
+        assert.are.equal(0, out[1].depth)
+        assert.are.equal(1, out[2].depth)
+        assert.are.equal(out[1], out[2].parent)
+    end)
+
+    it("carries the tag down through a plain bullet", function()
+        note("n.md", {
+            "- [ ] parent #todo",
+            "  - a note about it",
+            "    - [ ] child",
+        })
+        local out = tasks.collect()
+        assert.are.equal(2, #out)
+        assert.are.equal("child", out[2].text)
+        -- The bullet is context, not a level: the child is still the parent's.
+        assert.are.equal(out[1], out[2].parent)
+        assert.are.equal("a note about it", out[2].context)
+    end)
+
+    -- The whole point of require_tag: a meeting note's action items for other
+    -- people are nested checkboxes too, and must stay out of the task list.
+    it("does not invent a tag the parent never had", function()
+        note("n.md", {
+            "- [ ] someone else's item",
+            "  - [ ] their step",
+        })
+        assert.are.equal(0, #tasks.collect())
+        assert.are.equal(2, #tasks.collect({ inbox = true }))
+    end)
+
+    it("keeps an inherited subtask out of the inbox", function()
+        note("n.md", {
+            "- [ ] parent #todo",
+            "  - [ ] child",
+        })
+        assert.are.equal(0, #tasks.collect({ inbox = true }))
+    end)
+
+    it("counts a parent's subtasks and how many are settled", function()
+        note("n.md", {
+            "- [ ] parent #todo",
+            "  - [x] done step",
+            "  - [-] ~~dropped step~~",
+            "  - [ ] open step",
+        })
+        local out = tasks.collect()
+        assert.are.equal(3, out[1].children)
+        assert.are.equal(2, out[1].children_closed)
+    end)
+
+    it("records the bullet above a task that tagged itself", function()
+        note("n.md", {
+            "- how hard is it to pull the holder off",
+            "  - [ ] build the jig #todo",
+        })
+        local out = tasks.collect()
+        assert.are.equal(1, #out)
+        assert.are.equal("how hard is it to pull the holder off", out[1].context)
+        assert.is_nil(out[1].parent)
+    end)
+
+    it("marks a subtask whose parent the filters dropped", function()
+        note("n.md", {
+            "- [x] parent #todo",
+            "  - [ ] child",
+        })
+        local out = tasks.collect()
+        assert.are.equal(1, #out)
+        assert.are.equal("child", out[1].text)
+        assert.is_true(out[1].orphaned)
+    end)
+
+    it("outdenting closes the parent", function()
+        note("n.md", {
+            "- [ ] parent #todo",
+            "  - [ ] child",
+            "- [ ] sibling #todo",
+        })
+        local out = tasks.collect()
+        assert.are.equal(3, #out)
+        local sibling = vim.tbl_filter(function(x) return x.text == "sibling #todo" end, out)[1]
+        assert.are.equal(0, sibling.depth)
+        assert.is_nil(sibling.parent)
+    end)
+
+    -- Sorting a subtask on its own priority would scatter the steps of one job
+    -- across the list; they belong under the item they are steps of.
+    it("keeps subtasks under their parent whatever their own priority", function()
+        note("n.md", {
+            "- [ ] (C) late job #todo",
+            "  - [ ] (A) urgent step",
+            "- [ ] (B) other job #todo",
+        })
+        local out = tasks.collect()
+        -- The priority is parsed out of the text into its own field, so it is
+        -- gone from what is compared here; `sorted` below asserts it was read.
+        local texts = vim.tbl_map(function(x) return x.text end, out)
+        assert.are.same({ "other job #todo", "late job #todo", "urgent step" }, texts)
+        local sorted = vim.tbl_map(function(x) return x.priority end, out)
+        assert.are.same({ "B", "C", "A" }, sorted)
+    end)
+end)
+
+describe("to_entry", function()
+    before_each(function() setup({ tasks = { require_tag = "todo" } }) end)
+
+    it("indents a subtask under its parent", function()
+        local parent = { rel = "n.md", lineno = 1, text = "parent #todo", depth = 0 }
+        local child = { rel = "n.md", lineno = 2, text = "child", depth = 1, parent = parent }
+        assert.are.equal("n.md:2:   ↳ child", t.to_entry(child))
+    end)
+
+    it("shows how many subtasks are settled", function()
+        local task = { rel = "n.md", lineno = 1, text = "job #todo",
+            children = 2, children_closed = 1 }
+        assert.are.equal("n.md:1: job  [1/2]", t.to_entry(task))
+    end)
+
+    it("spells out the context when there is no parent row above", function()
+        local task = { rel = "n.md", lineno = 2, text = "build the jig #todo",
+            depth = 1, context = "how hard is it to pull off" }
+        assert.are.equal("n.md:2: build the jig  ← how hard is it to pull off",
+            t.to_entry(task))
+    end)
+
+    it("spells out the parent of an orphaned subtask instead of indenting it", function()
+        local parent = { rel = "n.md", lineno = 1, text = "parent #todo" }
+        local task = { rel = "n.md", lineno = 2, text = "child", depth = 1,
+            parent = parent, context = "parent #todo", orphaned = true }
+        assert.are.equal("n.md:2: child  ← parent", t.to_entry(task))
+    end)
+end)
+
+describe("next_sort", function()
+    it("cycles through the modes and wraps back to the default", function()
+        assert.are.equal("due", t.next_sort("priority"))
+        assert.are.equal("added", t.next_sort("due"))
+        assert.are.equal("priority", t.next_sort("added"))
+    end)
+
+    it("moves off the default when the mode is unset or unknown", function()
+        assert.are.equal("due", t.next_sort(nil))
+        assert.are.equal("due", t.next_sort("nonsense"))
+    end)
+end)
+
+describe("sort_tasks: modes", function()
+    before_each(function() setup() end)
+
+    -- Named for what each one is: `urgent` has the nearer due date but no
+    -- priority, `flagged` the priority but no due, `oldest` neither but the
+    -- earliest note.
+    local function fixture()
+        return {
+            urgent = { due = "2026-07-20", path = "b.md", lineno = 2, date = "2026-07-10" },
+            flagged = { priority = "A", path = "c.md", lineno = 3, date = "2026-07-11" },
+            oldest = { path = "a.md", lineno = 1, date = "2026-07-01" },
+        }
+    end
+
+    it("priority: what you flagged first, then what runs out first", function()
+        local f = fixture()
+        assert.are.same({ f.flagged, f.urgent, f.oldest },
+            t.sort_tasks({ f.oldest, f.urgent, f.flagged }, "priority"))
+    end)
+
+    it("due: what runs out first, whatever you flagged", function()
+        local f = fixture()
+        assert.are.same({ f.urgent, f.flagged, f.oldest },
+            t.sort_tasks({ f.oldest, f.urgent, f.flagged }, "due"))
+    end)
+
+    it("added: the order they were written down", function()
+        local f = fixture()
+        assert.are.same({ f.oldest, f.urgent, f.flagged },
+            t.sort_tasks({ f.flagged, f.urgent, f.oldest }, "added"))
+    end)
+
+    it("reverse flips whichever mode is in force", function()
+        local f = fixture()
+        assert.are.same({ f.oldest, f.urgent, f.flagged },
+            t.sort_tasks({ f.oldest, f.urgent, f.flagged }, "priority", true))
+        assert.are.same({ f.flagged, f.urgent, f.oldest },
+            t.sort_tasks({ f.flagged, f.urgent, f.oldest }, "added", true))
+    end)
+
+    -- A missing due date means "not urgent", not "top of the list" -- the
+    -- sentinel has to sort last, or every undated task would drown the ones
+    -- that actually run out.
+    it("sorts a task with no due date last", function()
+        local dated = { due = "2026-07-20", path = "a.md", lineno = 1 }
+        local undated = { path = "a.md", lineno = 2 }
+        assert.are.same({ dated, undated }, t.sort_tasks({ undated, dated }, "due"))
+    end)
+
+    it("defaults to priority when the mode is unknown", function()
+        local f = fixture()
+        assert.are.same(t.sort_tasks({ f.oldest, f.urgent, f.flagged }, "priority"),
+            t.sort_tasks({ f.oldest, f.urgent, f.flagged }, "nonsense"))
+    end)
+end)
+
+describe("collect: sorting a nested list", function()
+    local home
+
+    before_each(function()
+        home = vim.fn.tempname()
+        vim.fn.mkdir(home, "p")
+        setup({ home = home, tasks = { require_tag = "todo" } })
+        vim.fn.writefile({
+            "---", "date: 2026-07-01", "---",
+            "- [ ] (C) late job #todo",
+            "  - [ ] first step",
+            "  - [ ] second step",
+            "- [ ] (A) urgent job #todo",
+        }, home .. "/n.md")
+    end)
+
+    after_each(function() vim.fn.delete(home, "rf") end)
+
+    local function texts(opts)
+        return vim.tbl_map(function(x) return x.text end, tasks.collect(opts))
+    end
+
+    it("keeps steps under their job in every mode", function()
+        assert.are.same({ "urgent job #todo", "late job #todo", "first step", "second step" },
+            texts({ sort = "priority" }))
+        assert.are.same({ "late job #todo", "first step", "second step", "urgent job #todo" },
+            texts({ sort = "added" }))
+    end)
+
+    -- Reversing points the list the other way; it does not scramble the steps
+    -- of a job, which are written in the order they are meant to be done.
+    it("reverses the jobs but not the steps within one", function()
+        assert.are.same({ "late job #todo", "first step", "second step", "urgent job #todo" },
+            texts({ sort = "priority", reverse = true }))
+    end)
+end)

@@ -20,6 +20,25 @@ COMMANDS
   those already in your notes, then a due date). <alt-/> narrows the list by
   romaji via kensaku.vim (e.g. `kaigi` finds 会議); shown only when kensaku is
   installed, blank input clears it.
+  <alt-s> cycles the ordering (priority -> due -> added -> priority) and
+  <alt-r> reverses it; the active ordering shows in the prompt. A task with no
+  due date sorts last under `due`, not first.
+  A checkbox indented under a task is a subtask of it and inherits
+  tasks.require_tag, so the steps of one job need tagging once, not each. The
+  list keeps a subtask under its parent and shows the parent's progress
+  ([1/2]); a task whose parent is a plain bullet, or whose parent the view
+  filtered out, carries that line along instead (`task  <- context`).
+- FzfKastenTaskList: The same tasks as an ordinary buffer, worked with Vim
+  keys -- j/k/gg/G// are Vim's, and the actions are unmodified letters:
+  <enter> open, x done, c cancel, t tag, a add, u undo, s/S sort/reverse,
+  i inbox, r rescan, q close. Nothing is mapped that Vim needs. The buffer is
+  never written; actions rewrite the notes and it redraws from disk.
+  A split below previews the task's note around its line, following the
+  cursor: <c-e>/<c-y>/<c-f>/<c-b> scroll it from the list, p steps into it
+  (an ordinary window, so every Vim key works; q comes back), P hides it.
+  Configure with tasks.list (open = full/split/vsplit/tab, source, preview
+  = { enabled, height }, keys).
+- FzfKastenTaskListInbox: The same buffer, showing the inbox.
 - FzfKastenTaskToggle: Toggle the checkbox on the current line.
 - FzfKastenTaskAdd: Capture a new task to one fixed note (tasks.capture_note,
   or the first tasks.always entry). Takes text, or prompts with no argument.
