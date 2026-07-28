@@ -37,9 +37,12 @@ COMMANDS
   cursor. All three of Vim's scroll pairs act on it from the list --
   <c-d>/<c-u> half a screen, <c-f>/<c-b> a page, <c-e>/<c-y> a line -- so the
   rule is "scrolling is the preview, the list moves by cursor"; with no
-  preview up they fall through to Vim. p steps into it (an ordinary window, so
-  every Vim key works; q comes back), P hides it. Every key, the preview's
-  included, is tasks.list.keys.<name>; false leaves that key to Vim.
+  preview up they fall through to Vim. p goes into it (an ordinary window, so
+  every Vim key works; <esc> or <c-q> comes back), P hides it. Every key, the
+  preview's included, is tasks.list.keys.<name>: a key, a list of keys all
+  bound to that action, or false to leave that key to Vim. Each carries a
+  description in words, so which-key reads as an answer rather than a field
+  name.
   A listed buffer, so a bufferline shows it as a tab and you switch back to
   it like any open file; switching back re-scans and restores the preview.
   Configure with tasks.list (open = full/split/vsplit/tab, listed, source,

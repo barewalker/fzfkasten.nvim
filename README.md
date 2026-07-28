@@ -283,7 +283,7 @@ Tasks — 14   ·   priority
 | `i` | Switch between the task list and the inbox |
 | `r` | Re-scan the notes |
 | `q` | Close |
-| `p` | Step into the preview; `q` comes back |
+| `p` | Go into the preview; `<esc>` or `<c-q>` comes back |
 | `P` | Show or hide the preview |
 | `<c-d>` / `<c-u>` | Scroll the preview half a screen |
 | `<c-f>` / `<c-b>` | Scroll the preview a page |
@@ -310,7 +310,7 @@ Tasks — 14   ·   priority
   140  - 設定した位置に任意の荷重を印加可能な仕組み
 ```
 
-**It is an ordinary window, which is the whole design.** `p` steps into it and every Vim key works there — `j`, `gg`, `/`, `<c-d>`, `<c-w>p` — because nothing has been reimplemented. `q` comes back to the list.
+**It is an ordinary window, which is the whole design.** `p` goes into it and every Vim key works there — `j`, `gg`, `/`, `<c-d>`, `<c-w>p` — because nothing has been reimplemented. `<esc>` or `<c-q>` comes back to the list; deliberately not `q`, which closes the list, since one key meaning "leave this window" in one place and "close the whole thing" in another is a coin toss you make every time.
 
 Without leaving the list, **all three of Vim's scroll pairs are pointed at it** — `<c-d>`/`<c-u>` by half a screen, `<c-f>`/`<c-b>` by a page, `<c-e>`/`<c-y>` by a line. They mean exactly what they mean anywhere in Vim; only the window they act on is different, so there is no scroll vocabulary to learn.
 
@@ -330,11 +330,12 @@ tasks = {
       enabled = true,
       height = 0.5,  -- a fraction of the list window below 1, a line count above
     },
-    -- Every key is configurable, including the preview's; false leaves one to Vim.
+    -- Every key is configurable, the preview's included. Each entry is a key,
+    -- a list of keys (all bound to that action), or false to leave it to Vim.
     keys = {
       done = "x", cancel = "c", sort = "s",
       preview = "p", preview_toggle = "P",
-      preview_back = "q",                -- pressed inside the preview window
+      preview_back = { "<Esc>", "<C-q>" },   -- pressed inside the preview window
       preview_half_page_down = "<C-d>", preview_half_page_up = "<C-u>",
       preview_page_down = "<C-f>",      preview_page_up = "<C-b>",
       preview_down = "<C-e>",           preview_up = "<C-y>",

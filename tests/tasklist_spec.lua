@@ -242,6 +242,40 @@ describe("tasklist: configuration", function()
         assert.is_true(mapped["c"])
     end)
 
+    -- Two keys can both feel right; binding both beats making you pick.
+    it("binds every key in a list to the same action", function()
+        setup({ tasks = { list = { keys = { done = { "x", "<C-x>" } } } } })
+        note("n.md", { "- [ ] alpha #todo", "- [ ] beta #todo" })
+        tasklist.open()
+        goto_row("alpha")
+        press("x")
+        assert.is_truthy(read("n.md")[1]:match("^%- %[x%]"))
+        goto_row("beta")
+        press("<C-x>")
+        assert.is_truthy(read("n.md")[2]:match("^%- %[x%]"))
+    end)
+
+    -- which-key shows this string, so it has to answer "what does this key do",
+    -- not repeat the field name it happens to be stored under.
+    it("describes each key in words, not by its internal name", function()
+        setup({ tasks = { require_tag = "todo" } })
+        note("n.md", { "- [ ] alpha #todo" })
+        tasklist.open()
+        local desc = {}
+        for _, m in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
+            desc[m.lhs] = m.desc
+        end
+        assert.are.equal("Close the task list", desc["q"])
+        assert.are.equal("Tick this task off", desc["x"])
+        assert.are.equal("Preview: half page down", desc["<C-D>"])
+        -- Reads the configured tag, so it says what it will actually write.
+        assert.are.equal("Make this mine (#todo)", desc["t"])
+        for lhs, d in pairs(desc) do
+            assert.is_truthy(d and d ~= "", lhs .. " has no description")
+            assert.is_nil(d:find("_"), lhs .. " shows an internal name: " .. tostring(d))
+        end
+    end)
+
     it("takes a different key for an action", function()
         setup({ tasks = { list = { keys = { done = "d" } } } })
         note("n.md", { "- [ ] alpha #todo" })
@@ -368,11 +402,17 @@ describe("tasklist: preview", function()
         assert.is_true(vim.api.nvim_win_is_valid(tasklist._test.preview().win))
     end)
 
-    it("p steps into the preview, and q comes back", function()
-        press("p")
-        assert.are.equal(tasklist._test.preview().win, vim.api.nvim_get_current_win())
-        press("q")
-        assert.are.equal(tasklist._test.bufnr(), vim.api.nvim_get_current_buf())
+    -- Both configured keys come back, and `q` deliberately does not: it closes
+    -- the list, and one key meaning "leave this window" in one place and "close
+    -- the whole thing" in another is a coin toss you make every time.
+    it("p steps into the preview, and either back key returns", function()
+        for _, key in ipairs({ "<Esc>", "<C-q>" }) do
+            press("p")
+            assert.are.equal(tasklist._test.preview().win, vim.api.nvim_get_current_win())
+            press(key)
+            assert.are.equal(tasklist._test.bufnr(), vim.api.nvim_get_current_buf(),
+                key .. " did not come back to the list")
+        end
     end)
 
     -- The scroll keys act on the preview without the list losing focus, which
@@ -429,12 +469,12 @@ describe("tasklist: preview", function()
     end)
 
     it("takes a different key for stepping back out", function()
-        setup({ tasks = { list = { open = "full", keys = { preview_back = "<Esc>" } } } })
+        setup({ tasks = { list = { open = "full", keys = { preview_back = "<C-n>" } } } })
         note("n.md", { "- [ ] alpha #todo" })
         tasklist.open()
         press("p")
         assert.are.equal(tasklist._test.preview().win, vim.api.nvim_get_current_win())
-        press("<Esc>")
+        press("<C-n>")
         assert.are.equal(tasklist._test.bufnr(), vim.api.nvim_get_current_buf())
     end)
 
