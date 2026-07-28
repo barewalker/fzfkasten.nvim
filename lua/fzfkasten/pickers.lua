@@ -393,16 +393,47 @@ local function create_note_for_link(name)
     vim.bo.filetype = "markdown"
 end
 
--- Open a link target (an inner "[[...]]" string, possibly "name|alias"):
--- resolve recursively, pick via fzf on multiple matches, create when missing
--- (if configured), otherwise warn.
+-- Put the cursor on the heading an anchor names, in the buffer just opened.
+--
+-- Matched on the heading's text rather than a slug, because that is what the
+-- link says: `[[note#Results]]` is written by reading the note, not by guessing
+-- how its headings would be encoded. Case-insensitive, since a heading is prose
+-- and nobody recalls its capitalisation.
+--
+-- Nothing found is worth saying: the note opened at the top and looks like it
+-- worked, so silence here reads as "there is no such section" only to whoever
+-- already suspected it.
+local function jump_to_anchor(anchor)
+    if not anchor or anchor == "" then return end
+    local wanted = vim.trim(anchor):lower()
+    for lineno, line in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+        local heading = line:match("^#+%s+(.-)%s*$")
+        if heading and heading:lower() == wanted then
+            vim.api.nvim_win_set_cursor(0, { lineno, 0 })
+            vim.cmd("normal! zz")
+            return
+        end
+    end
+    vim.notify("[Fzfkasten] No heading '" .. anchor .. "' in this note.", vim.log.levels.WARN)
+end
+
+-- Open a link target (an inner "[[...]]" string, which may carry an anchor and
+-- an alias): resolve recursively, pick via fzf on multiple matches, create when
+-- missing (if configured), otherwise warn.
+--
+-- The anchor has to come off before anything looks for the note. Left on, the
+-- name is "note#heading", which matches no file -- so with
+-- `follow_link.create_nonexisting` set, following your own anchored link would
+-- open a *new* note called `note#heading`, template and all, and one `:w` would
+-- make it real.
 local function open_link_target(raw_target)
-    local name = raw_target:match("^(.-)|") or raw_target
+    local name, anchor = utils.split_link(raw_target)
     if not name or name == "" then return end
 
     local matches = resolve_note_files(name)
     if #matches == 1 then
         buffer.edit(matches[1])
+        jump_to_anchor(anchor)
     elseif #matches > 1 then
         fzf.fzf_exec(matches, vim.tbl_deep_extend("force", config.options.fzf, {
             prompt = "Multiple matches for '" .. name .. "'> ",
@@ -410,6 +441,7 @@ local function open_link_target(raw_target)
                 ['default'] = function(selected)
                     if not selected or #selected == 0 then return end
                     buffer.edit(selected[1])
+                    jump_to_anchor(anchor)
                 end
             }
         }))

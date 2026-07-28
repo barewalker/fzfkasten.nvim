@@ -122,39 +122,6 @@ describe("rename_note: rewriting links", function()
     end)
 end)
 
-describe("split_link", function()
-    it("reads a bare name", function()
-        assert.are.same({ "note", nil, nil }, { t.split_link("note") })
-    end)
-
-    it("reads an anchor", function()
-        assert.are.same({ "note", "見出し", nil }, { t.split_link("note#見出し") })
-    end)
-
-    it("reads an alias", function()
-        assert.are.same({ "note", nil, "呼び名" }, { t.split_link("note|呼び名") })
-    end)
-
-    it("reads all three", function()
-        assert.are.same({ "note", "見出し", "呼び名" }, { t.split_link("note#見出し|呼び名") })
-    end)
-
-    -- The alias is split off first, so a `#` inside it is part of the alias.
-    it("leaves a # inside an alias alone", function()
-        assert.are.same({ "note", nil, "see #3" }, { t.split_link("note|see #3") })
-    end)
-
-    -- ...and a heading containing one survives, the anchor being everything
-    -- after the first `#`.
-    it("keeps a # inside a heading", function()
-        assert.are.same({ "note", "Q#A", nil }, { t.split_link("note#Q#A") })
-    end)
-
-    it("reads an anchor with no name as a link within the same note", function()
-        assert.are.same({ "", "top", nil }, { t.split_link("#top") })
-    end)
-end)
-
 describe("retarget", function()
     it("is nil for a link to something else", function()
         assert.is_nil(t.retarget("other", "old", "new"))

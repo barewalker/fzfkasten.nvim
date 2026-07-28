@@ -56,6 +56,10 @@ COMMANDS
   preview = { enabled, height }, keys).
 - FzfKastenTaskListInbox: The same buffer, showing the inbox.
 - FzfKastenTaskToggle: Toggle the checkbox on the current line.
+- FzfKastenFollowLink / FzfKastenGotoLink: Follow the [[wikilink]] under the
+  cursor. An anchor puts the cursor on that heading ([[note#Results]] opens
+  note at its "## Results"), matched on the heading text, case-insensitively;
+  a heading that is not there opens the note anyway and warns.
 - FzfKastenRenameNote: Rename the current note and retarget every link to it:
   [[old]], [[old|alias]], [[old#heading]] and [[old#heading|alias]] all follow,
   anchor and alias untouched. Only whole names match, so [[old-notes]] is not a

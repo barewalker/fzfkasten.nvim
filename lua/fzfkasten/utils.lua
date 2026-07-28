@@ -5,6 +5,31 @@ function M.join_path(...)
     return (table.concat({...}, "/"):gsub("//+", "/"))
 end
 
+--- Split the inside of a wikilink into its parts: `[[name#anchor|alias]]`, of
+--- which the last two are optional.
+---
+--- `|` is taken first, so an alias may itself contain a `#` (`[[note|see #3]]`);
+--- the anchor is then everything after the first `#` of what is left, so a
+--- heading containing one (`[[note#Q#A]]`) survives the round trip.
+---
+--- Lives here rather than in core or pickers because both need it and they
+--- require each other: following a link and renaming one have to agree on what
+--- a link means, or an anchor you can write is an anchor that only one of them
+--- honours.
+--- @param content string the text between the brackets
+--- @return string name, string|nil anchor, string|nil alias
+function M.split_link(content)
+    local body, alias = content:match("^(.-)|(.*)$")
+    if not body then
+        body = content
+    end
+    local name, anchor = body:match("^(.-)#(.*)$")
+    if not name then
+        name = body
+    end
+    return name, anchor, alias
+end
+
 function M.get_template_path(template_name)
     return M.join_path(config.options.home, "templates", template_name)
 end

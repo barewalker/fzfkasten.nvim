@@ -800,6 +800,14 @@ neither the headings inside it nor the words you chose to call it by. Only whole
 names match, so `[[old-notes]]` is not a link to `old`, and `[[#top]]` — an
 anchor within the same note, with no name — belongs to nobody.
 
+**Following an anchored link puts the cursor on that heading.** `[[note#Results]]`
+opens the note at its `## Results`, matched on the heading's own text rather
+than a slug — that is what the link says, and you write it by reading the note,
+not by guessing how its headings would be encoded. Capitalisation is ignored,
+since a heading is prose and nobody recalls it. A heading that is not there
+opens the note anyway and says so, because landing at the top otherwise looks
+like it worked.
+
 This is the widest write in the plugin, so two things about how it goes about
 it are worth knowing:
 
