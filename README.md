@@ -640,6 +640,12 @@ Fzfkasten provides optional integration with [claudecode.nvim](https://github.co
 require("fzfkasten").setup({
   claude = {
     enabled = true,
+    -- Named prompts you can fire into the Claude terminal by name.
+    prompts = {
+      -- Open (or create) this week's weekly note, then type "/my-weekly-retro"
+      -- into Claude and submit it -- e.g. to run one of your own skills.
+      retro = { note = "weekly", text = "/my-weekly-retro" },
+    },
   },
 })
 ```
@@ -649,6 +655,24 @@ require("fzfkasten").setup({
 *   **`:FzfKastenClaudeSendBuffer`**: Send the entire current note to Claude as an `@mention`.
 *   **`:FzfKastenClaudeSendSelection`**: Send the visual selection to Claude.
 *   **`:FzfKastenClaudeToggle`**: Toggle the Claude terminal.
+*   **`:FzfKastenClaudePrompt <name>`**: Send a prompt registered in `claude.prompts`
+    to the Claude terminal (starting it if needed). The prompt's `note` is opened
+    first so Claude has it as context. `<Tab>` completes the configured names.
+
+### Configured prompts
+
+Each entry under `claude.prompts` is a named string you send with
+`:FzfKastenClaudePrompt <name>`:
+
+| Field    | Meaning                                                                                         |
+| -------- | ----------------------------------------------------------------------------------------------- |
+| `text`   | The string typed into the Claude terminal (required).                                            |
+| `note`   | `"weekly"` \| `"daily"` \| `"current"` (or omit) -- a note opened, and created from its template if missing, before the text is sent, so Claude reads it as context. `"current"`/omitted opens nothing. |
+| `submit` | Send a trailing `<CR>` so Claude runs it immediately. Defaults to `true`.                        |
+
+This is deliberately generic: register whatever prompt (a slash command, a
+question, a canned instruction) suits your workflow. With no `prompts`
+configured the command simply lists that none are set.
 
 ### Example Keymaps
 
@@ -656,6 +680,7 @@ require("fzfkasten").setup({
 { "<leader>kc", "<cmd>FzfKastenClaudeSendBuffer<CR>", desc = "Send note to Claude" },
 { "<leader>kc", "<cmd>FzfKastenClaudeSendSelection<CR>", mode = "v", desc = "Send selection to Claude" },
 { "<leader>kC", "<cmd>FzfKastenClaudeToggle<CR>", desc = "Toggle Claude terminal" },
+{ "<leader>kr", "<cmd>FzfKastenClaudePrompt retro<CR>", desc = "Send retro prompt to Claude" },
 ```
 
 If `claudecode.nvim` is not installed or `claude.enabled` is `false`, the commands will show a warning and do nothing — fzfkasten continues to work normally.

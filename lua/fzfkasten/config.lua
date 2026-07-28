@@ -254,6 +254,16 @@ M.defaults = {
  },
  claude = {
   enabled = false,
+  -- Named prompts fired into the Claude terminal with
+  -- `:FzfKastenClaudePrompt <name>`. Each entry:
+  --   text   : the string typed into the Claude terminal (required).
+  --   note   : "weekly" | "daily" | "current" (or nil) -- a note opened
+  --            (created from its template if missing) before the text is sent,
+  --            so Claude reads it as the active context. "current"/nil opens
+  --            nothing and sends from wherever you are.
+  --   submit : send a trailing <CR> so Claude runs it now (default true).
+  -- e.g. retro = { note = "weekly", text = "/my-weekly-retro" }
+  prompts = {},
  },
  fzf = {
   winopts = {

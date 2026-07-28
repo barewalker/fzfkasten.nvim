@@ -29,3 +29,11 @@ cmd("FzfKastenTaskListInbox", function() require('fzfkasten').task_list_inbox() 
 cmd("FzfKastenClaudeSendBuffer", function() require('fzfkasten').claude_send_buffer() end, { desc = "Fzfkasten: Send note to Claude" })
 cmd("FzfKastenClaudeSendSelection", function() require('fzfkasten').claude_send_selection() end, { range = true, desc = "Fzfkasten: Send selection to Claude" })
 cmd("FzfKastenClaudeToggle", function() require('fzfkasten').claude_toggle() end, { desc = "Fzfkasten: Toggle Claude terminal" })
+cmd("FzfKastenClaudePrompt", function(o) require('fzfkasten').claude_prompt(o.args) end, {
+	nargs = "?",
+	complete = function(arglead)
+		return vim.tbl_filter(function(n) return n:find(arglead, 1, true) == 1 end,
+			require('fzfkasten').claude_prompt_names())
+	end,
+	desc = "Fzfkasten: Send a configured prompt to the Claude terminal",
+})
