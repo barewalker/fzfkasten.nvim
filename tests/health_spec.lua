@@ -18,9 +18,15 @@ local function record()
     calls = {}
     original_health = vim.health
     vim.health = {}
+    local section
     for _, level in ipairs(LEVELS) do
         vim.health[level] = function(message, extra)
-            table.insert(calls, { level = level, message = message, extra = extra })
+            if level == "start" then
+                section = message
+            end
+            -- Which section a line belongs to, so a case can assert about the
+            -- checks it controls and leave the ones about this machine alone.
+            table.insert(calls, { level = level, message = message, extra = extra, section = section })
         end
     end
 end
@@ -71,10 +77,30 @@ describe("health: a working setup", function()
         health.check()
     end)
 
-    it("reports nothing as an error", function()
+    -- Everything but Dependencies, which is about the machine rather than the
+    -- setup: a box with no `fzf` on PATH makes that an error correctly, and a
+    -- test that went red over it would be reporting the runner, not the code.
+    -- (CI installs fzf and ripgrep, so it stays a real check there.)
+    it("reports nothing as an error, outside what this machine happens to have", function()
         for _, call in ipairs(calls) do
-            assert.are_not.equal("error", call.level,
-                "unexpected error: " .. call.message)
+            if call.section ~= "Dependencies" then
+                assert.are_not.equal("error", call.level,
+                    "unexpected error in " .. tostring(call.section) .. ": " .. call.message)
+            end
+        end
+    end)
+
+    -- ...and the dependency checks still have to report *something* for each,
+    -- which is the part that does not depend on what is installed.
+    it("has a verdict on every dependency", function()
+        for _, name in ipairs({ "fzf-lua", "fzf", "ripgrep" }) do
+            local seen = false
+            for _, call in ipairs(calls) do
+                if call.section == "Dependencies" and call.message:find(name, 1, true) then
+                    seen = true
+                end
+            end
+            assert.is_true(seen, "nothing reported about " .. name)
         end
     end)
 

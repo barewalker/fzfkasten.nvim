@@ -26,10 +26,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The task scan shells out to it. Without it fzfkasten falls back to
-      # reading every note, which works but is not what anyone runs.
-      - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      # ripgrep: the task scan shells out to it. Without it fzfkasten falls back
+      # to reading every note, which works but is not what anyone runs.
+      # fzf: fzf-lua shells out to the binary, so a runner without it is not an
+      # install anyone has -- and `:checkhealth` rightly calls it an error.
+      - name: Install ripgrep and fzf
+        run: sudo apt-get update && sudo apt-get install -y ripgrep fzf
 
       - name: Install Neovim (${{ matrix.neovim }})
         run: |
