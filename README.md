@@ -20,7 +20,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **Tag Search**: Search for `#tags` across all notes.
 - [x] **Link Insertion**: Interactive link insertion with `[[` trigger.
 - [x] **Follow Link**: Jump to the link under the cursor (or pick from all links in the buffer). Resolves notes recursively across sub-directories, and can create missing notes from a template. Mappable to `gf` with a native-`gf` fallback.
-- [x] **Backlinks**: Find all notes linking to the current note.
+- [x] **Backlinks**: Find all notes linking to the current note. `[[note]]`, `[[note|alias]]` and `[[note#heading]]` all count as links to `note`; only whole names match, so `[[note-old]]` is not one.
 - [x] **Rename Note**: Rename a note and retarget every link to it — see [Renaming](#renaming-a-note).
 - [x] **Template Engine**: Simple `{{title}}`, `{{date}}`, and `{{hdate}}` placeholders.
 - [x] **External Commands**: Append external data (like `gcalcli`) to daily notes.
@@ -28,7 +28,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **New Templated Notes**: Create new notes from predefined templates with interactive selection.
 - [x] **Log picker**: One picker (`:FzfKastenLog`) over recent days and weeks — existing notes preview and open, missing dates are created from a template, all in one place.
 - [x] **Claude Code Integration**: Optional integration with `claudecode.nvim` to send notes/selections to Claude (disabled by default).
-- [x] **Link Aliasing**: `[[note|alias]]` syntax is supported across follow link, backlinks, and rename.
+- [x] **Link Aliasing**: `[[note|alias]]` syntax is supported across follow link, backlinks, and rename. Anchors (`[[note#heading]]`) too, and all three read them alike.
 - [x] **Filename Sanitization**: Unicode-safe default (preserves CJK) with a user-overridable `transform.sanitize_filename` hook.
 - [x] **Template Placeholders**: Built-in `{{title}} {{date}} {{hdate}} {{year}} {{month}} {{day}} {{week}} {{time}}` plus user-defined entries via `template_placeholders` (string or function values).
 - [x] **Image Preview**: Delegated to `fzf-lua`'s previewer; see the [Image Preview](#image-preview) section for configuration.
