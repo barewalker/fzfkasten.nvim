@@ -342,4 +342,36 @@ describe("tasklist: preview", function()
         press("q")
         assert.is_nil(tasklist._test.preview().win)
     end)
+
+    -- The split belongs to the list, not to the window it sits under. Switch
+    -- that window to anything else and a preview of a note nobody is pointing
+    -- at any more would be left behind.
+    local function preview_gone()
+        return vim.wait(200, function() return tasklist._test.preview().win == nil end)
+    end
+
+    it("goes away when the window shows another buffer", function()
+        vim.cmd("enew")
+        assert.is_true(preview_gone())
+    end)
+
+    it("goes away when <enter> opens the note over the list", function()
+        goto_row("alpha")
+        press("<CR>")
+        assert.are.equal(home .. "/n.md", vim.api.nvim_buf_get_name(0))
+        assert.is_true(preview_gone())
+    end)
+
+    it("stays while you step into it", function()
+        press("p")
+        assert.is_false(preview_gone())
+        assert.is_true(vim.api.nvim_win_is_valid(tasklist._test.preview().win))
+    end)
+
+    it("comes back when the list is reopened", function()
+        vim.cmd("enew")
+        assert.is_true(preview_gone())
+        tasklist.open()
+        assert.is_true(vim.api.nvim_win_is_valid(tasklist._test.preview().win))
+    end)
 end)
