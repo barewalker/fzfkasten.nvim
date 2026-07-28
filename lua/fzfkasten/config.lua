@@ -121,6 +121,11 @@ M.defaults = {
   -- unmodified key, so `j`/`k`/`/`/`gg` are unavailable there whatever they
   -- are rebound to. Here nothing is mapped except the actions below.
   list = {
+   -- Keep the list in the buffer list, so it shows in a bufferline/tabline as
+   -- a tab and you switch back to it the way you switch to any open file. The
+   -- alternative is having to reopen it every time, which for a view you keep
+   -- glancing at is a keystroke too many. Set false to keep it out of the way.
+   listed = true,
    -- Where it opens.
    --   "full"   : takes the current window; `<enter>` opens the note in place
    --              and `<c-o>` comes back.

@@ -75,6 +75,26 @@ describe("tasklist: drawing", function()
         assert.are.equal("", lines()[2])
     end)
 
+    -- Listed, so a bufferline shows it as a tab and you switch back to it like
+    -- any open file. Having to reopen a view you keep glancing at is the
+    -- friction this removes.
+    it("sits in the buffer list, so a bufferline shows it", function()
+        setup()
+        note("n.md", { "- [ ] alpha #todo" })
+        tasklist.open()
+        assert.is_true(vim.bo.buflisted)
+        local listed = vim.tbl_map(function(b) return b.bufnr end,
+            vim.fn.getbufinfo({ buflisted = 1 }))
+        assert.is_true(vim.tbl_contains(listed, tasklist._test.bufnr()))
+    end)
+
+    it("stays out of the buffer list when listed = false", function()
+        setup({ tasks = { list = { listed = false } } })
+        note("n.md", { "- [ ] alpha #todo" })
+        tasklist.open()
+        assert.is_false(vim.bo.buflisted)
+    end)
+
     it("is a scratch buffer you cannot type into", function()
         setup()
         note("n.md", { "- [ ] alpha #todo" })
@@ -396,6 +416,27 @@ describe("tasklist: preview", function()
         press("p")
         assert.is_false(preview_gone())
         assert.is_true(vim.api.nvim_win_is_valid(tasklist._test.preview().win))
+    end)
+
+    -- Switching back from the bufferline never goes through M.open, so the
+    -- preview has to be restored by the buffer being shown again -- otherwise
+    -- the ordinary way back gives you a list with no preview.
+    it("comes back when the buffer is switched to, not just reopened", function()
+        local list_buf = tasklist._test.bufnr()
+        vim.cmd("enew")
+        assert.is_true(preview_gone())
+        vim.cmd("buffer " .. list_buf)
+        vim.wait(200, function() return tasklist._test.preview().win ~= nil end)
+        assert.is_true(vim.api.nvim_win_is_valid(tasklist._test.preview().win))
+        assert.are.equal(list_buf, vim.api.nvim_get_current_buf())
+    end)
+
+    it("re-scans the notes when switched back to", function()
+        local list_buf = tasklist._test.bufnr()
+        vim.cmd("enew")
+        note("n.md", { "- [ ] alpha #todo", "- [ ] beta #todo", "- [ ] gamma #todo" })
+        vim.cmd("buffer " .. list_buf)
+        assert.are.equal("Tasks — 3   ·   priority", lines()[1])
     end)
 
     it("comes back when the list is reopened", function()

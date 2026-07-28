@@ -290,6 +290,8 @@ Tasks — 14   ·   priority
 
 Everything else is Vim's, untouched: `j`, `k`, `gg`, `G`, `/`, `n`, `{`, `}`, `<c-d>`, `<c-u>`. No modifier is needed for anything, which is the point — `x`, `c`, `a`, `u` read as delete, change, append, undo, so there is almost nothing to learn.
 
+**It is a listed buffer**, so a bufferline shows it as a tab and you switch back to it the way you switch to any open file — `<s-h>`/`<s-l>`, `:b`, `<c-^>`. That matters more than it sounds: a list you glance at all day should not need a keystroke to summon each time. Switching back re-scans the notes and puts the preview back, so what you return to is the current state, not the state you left. Set `list.listed = false` to keep it out of the buffer list.
+
 **The buffer is never written and is not the ledger** — the notes still are. Every action goes through the same writers the picker uses, and the buffer is redrawn from disk afterwards. Close it and nothing is lost. Complete a task and the next moves up under the cursor, so a run of them is one keypress each.
 
 #### The preview
@@ -319,6 +321,7 @@ It belongs to the list rather than to the window it sits under, so it goes away 
 tasks = {
   list = {
     open = "full",   -- or "split" / "vsplit" / "tab"
+    listed = true,   -- keep it in the buffer list, so a bufferline shows it
     source = true,   -- the note:line, right-aligned as virtual text
     preview = {
       enabled = true,

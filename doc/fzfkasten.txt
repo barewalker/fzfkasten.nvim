@@ -36,8 +36,10 @@ COMMANDS
   A split below previews the task's note around its line, following the
   cursor: <c-e>/<c-y>/<c-f>/<c-b> scroll it from the list, p steps into it
   (an ordinary window, so every Vim key works; q comes back), P hides it.
-  Configure with tasks.list (open = full/split/vsplit/tab, source, preview
-  = { enabled, height }, keys).
+  A listed buffer, so a bufferline shows it as a tab and you switch back to
+  it like any open file; switching back re-scans and restores the preview.
+  Configure with tasks.list (open = full/split/vsplit/tab, listed, source,
+  preview = { enabled, height }, keys).
 - FzfKastenTaskListInbox: The same buffer, showing the inbox.
 - FzfKastenTaskToggle: Toggle the checkbox on the current line.
 - FzfKastenTaskAdd: Capture a new task to one fixed note (tasks.capture_note,
