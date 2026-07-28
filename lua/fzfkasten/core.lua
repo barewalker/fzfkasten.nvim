@@ -136,25 +136,6 @@ function M.create_new_note_interactively()
     end)
 end
 
--- Split the inside of a wikilink into its parts: `[[name#anchor|alias]]`, of
--- which the last two are optional.
---
--- `|` is taken first, so an alias may itself contain a `#` ("[[note|see #3]]");
--- the anchor is then whatever follows the first `#` of what is left, so a
--- heading containing one ("[[note#Q#A]]") survives the round trip.
--- @return string name, string|nil anchor, string|nil alias
-local function split_link(content)
-    local body, alias = content:match("^(.-)|(.*)$")
-    if not body then
-        body = content
-    end
-    local name, anchor = body:match("^(.-)#(.*)$")
-    if not name then
-        name = body
-    end
-    return name, anchor, alias
-end
-
 -- Point a wikilink at `new_name`, or nil when it points somewhere else and
 -- should be left exactly as it is.
 --
@@ -163,7 +144,7 @@ end
 -- whole names match, so `[[old-notes]]` is not a link to `old`, and `[[#top]]`
 -- -- an anchor within the same note, with no name at all -- is nobody's link.
 local function retarget(content, old_name, new_name)
-    local name, anchor, alias = split_link(content)
+    local name, anchor, alias = utils.split_link(content)
     if name ~= old_name then
         return nil
     end
@@ -285,7 +266,6 @@ end
 -- runs over every note in the collection, so its edge cases are pinned here
 -- rather than only through a rename that writes hundreds of files.
 M._test = {
-    split_link = split_link,
     retarget = retarget,
 }
 
