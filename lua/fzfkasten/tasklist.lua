@@ -36,6 +36,12 @@ local preview = { win = nil, buf = nil, shown = nil }
 
 local augroup = vim.api.nvim_create_augroup("fzfkasten-tasklist", { clear = true })
 
+-- Set while `M.open` is putting the list up. Displaying the buffer fires
+-- `BufWinEnter`, whose whole job is to catch the list coming back *without*
+-- `M.open` -- switched to from the bufferline, say -- so it has to stand aside
+-- while `M.open` is doing the same work itself, from stale state.
+local opening = false
+
 -- Rows start here: line 1 is the heading, line 2 is blank.
 local FIRST_ROW = 3
 
@@ -435,7 +441,11 @@ local function create_buffer()
     pcall(vim.api.nvim_buf_set_name, created, NAME)
     vim.bo[created].buftype = "nofile"
     vim.bo[created].swapfile = false
-    vim.bo[created].buflisted = false
+    -- Listed, so it sits in the buffer list like any file you have open and
+    -- your bufferline shows it as a tab. That is what makes the list something
+    -- you switch back to rather than something you have to summon: a keystroke
+    -- to reopen it is a keystroke too many for a view you keep glancing at.
+    vim.bo[created].buflisted = options().listed ~= false
     vim.bo[created].modifiable = false
     vim.bo[created].filetype = "fzfkasten-tasks"
     return created
@@ -462,6 +472,13 @@ end
 ---   the triage list, `sort`/`reverse` pick the ordering to start from.
 function M.open(opts)
     opts = opts or {}
+    opening = true
+    local ok, err = pcall(M._open, opts)
+    opening = false
+    if not ok then error(err, 0) end
+end
+
+function M._open(opts)
     local origin = vim.api.nvim_get_current_win()
 
     -- Already on screen: focus it. Reopening is how you come back to the list,
@@ -521,6 +538,24 @@ function M.open(opts)
         group = augroup,
         buffer = buf,
         callback = close_preview_unless_shown,
+    })
+    -- ...and coming back, by a route that isn't `M.open`: switched to from the
+    -- bufferline, `:b`, `<c-^>`. The list is a listed buffer, so this is the
+    -- ordinary way back to it and has to leave it as usable as `M.open` does --
+    -- adopt whichever window it landed in, put the preview back, and re-scan,
+    -- because what you come back to should be the notes as they are now.
+    vim.api.nvim_create_autocmd("BufWinEnter", {
+        group = augroup,
+        buffer = buf,
+        callback = function()
+            if opening or not view then return end
+            view.win = vim.api.nvim_get_current_win()
+            if not (view.origin and vim.api.nvim_win_is_valid(view.origin)) then
+                view.origin = view.win
+            end
+            open_preview()
+            render()
+        end,
     })
     -- ...and the window itself being closed, which `BufWinLeave` does not cover
     -- when it is the preview that goes: this then finds the list still up and
