@@ -299,9 +299,16 @@ M.defaults = {
 
 M.options = vim.tbl_deep_extend("force", M.defaults, {})
 
+-- Has `setup()` run? `M.options` starts as a copy of the defaults, so nothing
+-- about it can tell "configured with nothing" from "never configured" -- and
+-- the difference matters, because the default `home` is a guess. `:checkhealth`
+-- reads this to say which of the two you are looking at.
+M.configured = false
+
 function M.setup(user_opts)
  -- M.defaults と user_opts をマージ
  M.options = vim.tbl_deep_extend("force", M.defaults, user_opts or {})
+ M.configured = true
 
  -- パスの展開 (~ をフルパスに変換)
  M.options.home = vim.fn.expand(M.options.home)

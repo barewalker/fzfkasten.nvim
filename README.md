@@ -758,8 +758,38 @@ nvim --headless --noplugin -u tests/minimal_init.lua \
 ```
 
 or, with `make` available, simply `make test`. A green run exits 0; a failing
-assertion prints the file, line and diff and exits 1, so it drops straight into
-CI or a pre-commit hook.
+assertion prints the file, line and diff and exits 1.
+
+**CI runs the same suite from a clean checkout** on Neovim stable and nightly
+(`.github/workflows/test.yml`). That the tests pass in a working copy says
+nothing about them passing for anyone who clones the repo — a `.gitignore`
+pattern once swallowed `tests/minimal_init.lua`, and the suite could not run at
+all from a clone, silently.
+
+What the suite covers, and why in that order:
+
+| Spec | Covers |
+|---|---|
+| `tasks_spec` | The string surgery — rewriting a mark, wrapping a strike inside a priority, stripping a stamp — plus nesting and the orderings |
+| `writers_spec` | The paths that decide **not** to write: an unsaved buffer, a line edited since, a note that moved. Every refusal asserts the file is byte-for-byte unchanged |
+| `tasklist_spec` | The task list buffer end to end, pressing the keys rather than calling the functions, so a mapping that failed to attach cannot pass |
+| `health_spec` | `:checkhealth` in the states worth reporting — no notes directory, a missing template, nowhere to capture to |
+
+`writers_spec` is the one that earns its keep. Everything else fails loudly; that
+code fails silently, and it is all that stands between a mis-press and a lost
+line.
+
+When a new test passes first time, break the thing it covers and check it goes
+red. Three of these did not at first — one read its expected value out of the
+module it was testing, so it passed for any value that module held.
+
+## Health check
+
+`:checkhealth fzfkasten` reports what fzfkasten needs from outside itself: the
+notes directory, `fzf-lua` and the `fzf` binary, `ripgrep`, the templates you
+pointed it at, and where captured tasks will land. Those failures otherwise
+surface as a picker that opens empty or a command that quietly does nothing,
+which says nothing about which of them it was.
 
 ## License
 
