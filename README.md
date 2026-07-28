@@ -253,6 +253,131 @@ A due date is `due:YYYY-MM-DD`, or `due:YYYY-MM-DDTHH:MM` when a time matters �
 | `<alt-a>` | Capture a new task with a guided input: text (seeded from what you typed), tags picked from those your notes already use, then a due date. Writes to the capture note and reopens the list |
 | `<alt-/>` | Narrow the list by romaji: `kaigi` finds 会議. Needs [kensaku.vim](https://github.com/lambdalisue/kensaku.vim); empty input clears it |
 | `<alt-u>` | Put back the last line any of these rewrote |
+| `<alt-s>` | Cycle the ordering: priority → due → added → priority |
+| `<alt-r>` | Reverse whichever ordering is in force |
+
+### The list as a buffer — `:FzfKastenTaskList`
+
+The picker is the right tool for **finding one task**: you type, you press enter, and its `<ctrl->`/`<alt->` bindings never come up. It is the wrong tool for **working down a list**, where you want `j`, `k`, `/`, `gg` and everything else you already know — and cannot have them, because fzf's prompt owns every unmodified key. No rebinding fixes that; the input field is the reason.
+
+So `:FzfKastenTaskList` draws the same tasks into an ordinary scratch buffer, where the only keys defined are the actions:
+
+```
+Tasks — 14   ·   priority
+
+(A) draft the monthly report  [due 2026-07-27]                          tasks/active.md:32
+(A) ship the v2 release  [0/1]  [due 2026-07-31]     tasks/active.md:26
+  ↳ (A) tag and publish it                                   tasks/active.md:27
+(B) renew the domain  [due 2026-07-24]     tasks/active.md:25
+```
+
+| Key | Action |
+|---|---|
+| `<enter>` | Open the note at this task |
+| `x` | Tick it off |
+| `c` | Drop it, keeping the line |
+| `t` | Add `require_tag` — promotes an inbox entry |
+| `a` | Capture a new task |
+| `u` | Put back the last line an action rewrote |
+| `s` / `S` | Cycle the ordering / reverse it |
+| `i` | Switch between the task list and the inbox |
+| `r` | Re-scan the notes |
+| `q` | Close |
+| `p` | Step into the preview; `q` comes back |
+| `P` | Show or hide the preview |
+| `<c-e>` / `<c-y>` | Scroll the preview a line |
+| `<c-f>` / `<c-b>` | Scroll the preview a page |
+
+Everything else is Vim's, untouched: `j`, `k`, `gg`, `G`, `/`, `n`, `{`, `}`, `<c-d>`, `<c-u>`. No modifier is needed for anything, which is the point — `x`, `c`, `a`, `u` read as delete, change, append, undo, so there is almost nothing to learn.
+
+**The buffer is never written and is not the ledger** — the notes still are. Every action goes through the same writers the picker uses, and the buffer is redrawn from disk afterwards. Close it and nothing is lost. Complete a task and the next moves up under the cursor, so a run of them is one keypress each.
+
+#### The preview
+
+Under the list is a split showing the task's note around its line, centred on it and following the cursor:
+
+```
+Tasks — 14   ·   priority
+write a test that uploads a 2 GB file  ← what happens when an upload times…
+────────────────────────────────────────────────────────────
+  134  # Hardening the upload
+  136  - read the error logs first, as soon as they come in
+  138  - what happens when an upload times out halfway
+▶ 139    - [ ] write a test that uploads a 2 GB file #todo
+  140  - a way to resume an upload from where it stopped
+```
+
+**It is an ordinary window, which is the whole design.** `p` steps into it and every Vim key works there — `j`, `gg`, `/`, `<c-d>`, `<c-w>p` — because nothing has been reimplemented. `q` comes back to the list.
+
+Without leaving the list, `<c-e>`/`<c-y>`/`<c-f>`/`<c-b>` scroll it. Those mean exactly what they mean anywhere in Vim; only the window they act on is different, so there is no scroll vocabulary to learn. They are free to reuse here because you move through the list with `j`/`k`, not by scrolling it.
+
+The preview reads a **loaded buffer** in preference to the file, so a note you have open and edited but not written previews as it actually is, not as the file on disk is lagging behind it.
+
+```lua
+tasks = {
+  list = {
+    open = "full",   -- or "split" / "vsplit" / "tab"
+    source = true,   -- the note:line, right-aligned as virtual text
+    preview = {
+      enabled = true,
+      height = 0.5,  -- a fraction of the list window below 1, a line count above
+    },
+    keys = { done = "x", cancel = "c", sort = "s" },  -- set one to false to leave it to Vim
+  },
+}
+```
+
+`open = "full"` takes the current window, so `<enter>` opens the note in place and `<c-o>` comes back. The split variants leave the window you were reading in, and `<enter>` opens the note *there* — so the list stays on screen beside it.
+
+### Ordering the list
+
+The list opens ordered by priority, then by due date — what you flagged, then what runs out. `<alt-s>` cycles that to two other orderings, and `<alt-r>` flips whichever one is in force:
+
+| Ordering | Reads as |
+|---|---|
+| `priority` | What you decided matters, then what runs out first. The default |
+| `due` | What runs out first, whatever you decided about it |
+| `added` | The order they were written down: the note's date, then position in the note. Captures append, so within one note this is capture order |
+
+A task with no due date sorts **last** under `due`, not first — no due date means "not urgent", and a sentinel that sorted first would let undated tasks drown the ones that actually run out. The same goes for a note with no date under `added`.
+
+The ordering shows in the prompt (`Tasks (due, reversed)> `) so a short list reads as "ordered differently" rather than "all there is". The default ordering is left unsaid: a prompt that always carries a tag is one you stop reading.
+
+Changing the order reopens the picker, carrying your query over — the entries move, what you typed to narrow them doesn't. Reversing points the list the other way; it does **not** scramble the steps of a job, which stay in the order they are written under the item they belong to.
+
+### Subtasks, and the context a task line loses
+
+A job with steps is written the way you'd write it anyway — a checkbox indented under another:
+
+```markdown
+- [ ] (A) ship the v2 release #todo due:2026-07-31
+  - [x] draw it up and release the drawing
+  - [ ] send it out for machining
+```
+
+**A checkbox nested under a task is a task too, and inherits `require_tag` from it.** Deciding an item is yours is a decision about the whole item; re-tagging every step of it is bookkeeping with nothing to show for it. Inheritance only ever flows down from a checkbox that carries the tag, so a meeting note's action items for other people — nested checkboxes just the same — stay out of the list exactly as before.
+
+The list keeps a subtask under the item it belongs to, and says how far along that item is:
+
+```
+- [ ] (A) ship the v2 release  [1/2]  [due 2026-07-31]
+    ↳ send it out for machining
+```
+
+Subtasks sort with their parent rather than on their own priority — a `(A)` step of a `(C)` job stays where it can be read as a step, instead of being scattered to the top of the list on its own.
+
+**A task also carries the line it hangs off, when there is no parent row above it to read that from:**
+
+```
+- [ ] what happens when an upload times out
+  - [ ] write a test that uploads a 2 GB file #todo
+```
+
+```
+write a test that uploads a 2 GB file  ← what happens when an upload times out
+```
+
+That happens when the line above is a plain bullet (no checkbox, so nothing to indent under), or when the parent task was filtered out of the view — an open step under a finished item, say. Either way the task line stops being a fragment you have to open the note to understand. The same context shows up in the inbox, where a checkbox is most likely to be missing the words that made it make sense.
 
 If your notes are written in Japanese, fzf's own filter needs you to type Japanese to match them. **`<alt-/>` lets you narrow by romaji instead**: it asks for a query (seeded from whatever you had typed), hands it to [kensaku.vim](https://github.com/lambdalisue/kensaku.vim) to build a matcher, and reopens the picker showing only what matches — so `kaigi` surfaces 会議 without leaving your keyboard's Latin layout. Empty input clears the filter; the prompt gains `(romaji)` while one is active. The key only appears when kensaku is installed — it is an optional dependency, not required.
 

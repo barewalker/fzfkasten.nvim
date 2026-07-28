@@ -115,6 +115,59 @@ M.defaults = {
   -- standing list, so the capture is always scanned); if that is empty too,
   -- capture has nowhere to go and says so rather than guessing.
   capture_note = nil,
+  -- `:FzfKastenTaskList` -- the same task list as a buffer you work in with
+  -- Vim keys, for when you are getting through the list rather than looking
+  -- one task up. The picker cannot offer that: fzf's prompt owns every
+  -- unmodified key, so `j`/`k`/`/`/`gg` are unavailable there whatever they
+  -- are rebound to. Here nothing is mapped except the actions below.
+  list = {
+   -- Where it opens.
+   --   "full"   : takes the current window; `<enter>` opens the note in place
+   --              and `<c-o>` comes back.
+   --   "split"  : above what you were reading, which stays put -- `<enter>`
+   --   "vsplit" : opens the note there, so the list stays on screen.
+   --   "tab"    : its own tab.
+   open = "full",
+   -- Hang each task's note and line off the right edge as virtual text: there
+   -- when you want it, never in the way of the task, never yanked with it.
+   source = true,
+   -- A split under the list showing the task's note around its line, following
+   -- the cursor. It is an ordinary window, so stepping into it (`p`) gives you
+   -- every Vim key -- which is why there is no scroll vocabulary to learn here
+   -- beyond pointing the usual ones at it.
+   preview = {
+    enabled = true,
+    -- A fraction of the list window below 1, a line count at or above it.
+    height = 0.5,
+   },
+   -- Buffer-local normal-mode keys. Unmodified letters on purpose -- the whole
+   -- point of the buffer is that everything else is Vim's. `x`/`c`/`a`/`u`
+   -- read as delete/change/append/undo, which is most of what they do. Set one
+   -- to `false` to leave that key to Vim.
+   keys = {
+    open = "<CR>",   -- open the note at this task
+    done = "x",      -- tick it off
+    cancel = "c",    -- drop it, keeping the line
+    tag = "t",       -- add require_tag (promotes an inbox entry)
+    add = "a",       -- capture a new task
+    undo = "u",      -- put back the last line an action rewrote
+    sort = "s",      -- cycle priority -> due -> added
+    reverse = "S",   -- flip the order
+    inbox = "i",     -- switch between the task list and the inbox
+    refresh = "r",   -- re-scan the notes
+    close = "q",
+    -- The preview. `<c-e>`/`<c-y>`/`<c-f>`/`<c-b>` do to the split below what
+    -- they do to any window in Vim; only the window they act on differs, so
+    -- there is nothing new to remember. `p` steps into it, where the rest of
+    -- Vim (`gg`, `/`, `<c-d>`) applies as usual and `q` comes back.
+    preview = "p",
+    preview_toggle = "P",
+    preview_down = "<C-e>",
+    preview_up = "<C-y>",
+    preview_page_down = "<C-f>",
+    preview_page_up = "<C-b>",
+   },
+  },
   -- When set (e.g. "todo"), only checkboxes carrying `#<require_tag>` count as
   -- tasks. Everything else becomes the inbox (`:FzfKastenTaskInbox`), so
   -- checkboxes you never meant as your own -- other people's action items in

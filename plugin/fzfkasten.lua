@@ -24,6 +24,8 @@ cmd("FzfKastenTaskTag", function(o) require('fzfkasten').task_tag({ line1 = o.li
 cmd("FzfKastenTaskCancel", function() require('fzfkasten').task_cancel() end, { desc = "Fzfkasten: Cancel the task on the current line, or reopen it" })
 cmd("FzfKastenTaskDue", function(o) require('fzfkasten').task_due(o.args) end, { nargs = "?", desc = "Fzfkasten: Set (or, with no argument, clear) the due date on the current task" })
 cmd("FzfKastenTaskUndo", function() require('fzfkasten').task_undo() end, { desc = "Fzfkasten: Put back the last task line the picker rewrote" })
+cmd("FzfKastenTaskList", function() require('fzfkasten').task_list() end, { desc = "Fzfkasten: Task list as a buffer, worked with Vim keys" })
+cmd("FzfKastenTaskListInbox", function() require('fzfkasten').task_list_inbox() end, { desc = "Fzfkasten: Task list buffer, showing the inbox" })
 cmd("FzfKastenClaudeSendBuffer", function() require('fzfkasten').claude_send_buffer() end, { desc = "Fzfkasten: Send note to Claude" })
 cmd("FzfKastenClaudeSendSelection", function() require('fzfkasten').claude_send_selection() end, { range = true, desc = "Fzfkasten: Send selection to Claude" })
 cmd("FzfKastenClaudeToggle", function() require('fzfkasten').claude_toggle() end, { desc = "Fzfkasten: Toggle Claude terminal" })
