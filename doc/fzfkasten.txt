@@ -34,8 +34,12 @@ COMMANDS
   i inbox, r rescan, q close. Nothing is mapped that Vim needs. The buffer is
   never written; actions rewrite the notes and it redraws from disk.
   A split below previews the task's note around its line, following the
-  cursor: <c-e>/<c-y>/<c-f>/<c-b> scroll it from the list, p steps into it
-  (an ordinary window, so every Vim key works; q comes back), P hides it.
+  cursor. All three of Vim's scroll pairs act on it from the list --
+  <c-d>/<c-u> half a screen, <c-f>/<c-b> a page, <c-e>/<c-y> a line -- so the
+  rule is "scrolling is the preview, the list moves by cursor"; with no
+  preview up they fall through to Vim. p steps into it (an ordinary window, so
+  every Vim key works; q comes back), P hides it. Every key, the preview's
+  included, is tasks.list.keys.<name>; false leaves that key to Vim.
   A listed buffer, so a bufferline shows it as a tab and you switch back to
   it like any open file; switching back re-scans and restores the preview.
   Configure with tasks.list (open = full/split/vsplit/tab, listed, source,
