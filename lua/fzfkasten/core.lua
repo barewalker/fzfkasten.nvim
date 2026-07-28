@@ -136,6 +136,76 @@ function M.create_new_note_interactively()
     end)
 end
 
+-- Split the inside of a wikilink into its parts: `[[name#anchor|alias]]`, of
+-- which the last two are optional.
+--
+-- `|` is taken first, so an alias may itself contain a `#` ("[[note|see #3]]");
+-- the anchor is then whatever follows the first `#` of what is left, so a
+-- heading containing one ("[[note#Q#A]]") survives the round trip.
+-- @return string name, string|nil anchor, string|nil alias
+local function split_link(content)
+    local body, alias = content:match("^(.-)|(.*)$")
+    if not body then
+        body = content
+    end
+    local name, anchor = body:match("^(.-)#(.*)$")
+    if not name then
+        name = body
+    end
+    return name, anchor, alias
+end
+
+-- Point a wikilink at `new_name`, or nil when it points somewhere else and
+-- should be left exactly as it is.
+--
+-- The anchor and the alias are carried across untouched: renaming a note moves
+-- neither the heading inside it nor the words you chose to call it by. Only
+-- whole names match, so `[[old-notes]]` is not a link to `old`, and `[[#top]]`
+-- -- an anchor within the same note, with no name at all -- is nobody's link.
+local function retarget(content, old_name, new_name)
+    local name, anchor, alias = split_link(content)
+    if name ~= old_name then
+        return nil
+    end
+    return "[[" .. new_name
+        .. (anchor and ("#" .. anchor) or "")
+        .. (alias and ("|" .. alias) or "")
+        .. "]]"
+end
+
+-- What a note currently says, and where saying it back has to go.
+--
+-- A loaded buffer with unsaved changes is the note; the file is behind it.
+-- Reading the file and writing it back would rewrite text the buffer does not
+-- have, and the next `:w` would overwrite the link update with the buffer's
+-- own -- silently leaving that one note pointing at a name that no longer
+-- exists. So a dirty buffer is read and written in place, and its `:w` carries
+-- both its edits and ours.
+-- @return string[] lines, integer|nil bufnr to write back to instead of the file
+local function note_source(note_file)
+    local bufnr = vim.fn.bufnr(note_file)
+    if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) and vim.bo[bufnr].modified then
+        return vim.api.nvim_buf_get_lines(bufnr, 0, -1, false), bufnr
+    end
+    local ok, lines = pcall(vim.fn.readfile, note_file)
+    return ok and lines or {}, nil
+end
+
+local function write_note(note_file, lines, bufnr)
+    if bufnr then
+        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+        return
+    end
+    vim.fn.writefile(lines, note_file)
+    -- A clean buffer on the same file is now behind; bring it up to date.
+    local loaded = vim.fn.bufnr(note_file)
+    if loaded ~= -1 and vim.api.nvim_buf_is_loaded(loaded) then
+        vim.schedule(function()
+            pcall(vim.cmd, "checktime " .. loaded)
+        end)
+    end
+end
+
 function M.rename_note(old_path, new_name_raw)
     local old_name = vim.fn.fnamemodify(old_path, ":t:r")
     local extension = vim.fn.fnamemodify(old_path, ":e")
@@ -175,30 +245,24 @@ function M.rename_note(old_path, new_name_raw)
     local updated = 0
 
     for _, note_file in ipairs(all_notes) do
-        local lines = vim.fn.readfile(note_file)
+        local lines, bufnr = note_source(note_file)
         local changed = false
         local new_lines = {}
 
         for _, line in ipairs(lines) do
-            -- Pattern to match [[old_name]] or [[old_name|alias]]
+            -- `[[name]]`, `[[name#anchor]]`, `[[name|alias]]`, or all three.
             local updated_line = line:gsub("%[%[(.-)%]%]", function(link_content)
-                local target = link_content:match("^(.-)|") or link_content
-                if target == old_name then
-                    local alias = link_content:match("|(.*)$")
+                local retargeted = retarget(link_content, old_name, new_name)
+                if retargeted then
                     changed = true
-                    if alias then
-                        return "[[" .. new_name .. "|" .. alias .. "]]"
-                    else
-                        return "[[" .. new_name .. "]]"
-                    end
                 end
-                return nil -- No change
+                return retargeted -- nil leaves the link exactly as it was
             end)
             table.insert(new_lines, updated_line)
         end
 
         if changed then
-            vim.fn.writefile(new_lines, note_file)
+            write_note(note_file, new_lines, bufnr)
             updated = updated + 1
         end
     end
@@ -216,6 +280,14 @@ function M.rename_note(old_path, new_name_raw)
     vim.notify(string.format("Renamed '%s' to '%s'; %d note%s updated.",
         old_name, new_name, updated, updated == 1 and "" or "s"), vim.log.levels.INFO)
 end
+
+-- Pure helpers, exposed for tests (tests/rename_spec.lua). The link surgery
+-- runs over every note in the collection, so its edge cases are pinned here
+-- rather than only through a rename that writes hundreds of files.
+M._test = {
+    split_link = split_link,
+    retarget = retarget,
+}
 
 function M.rename_note_interactively(filepath)
     local current_path = filepath or vim.api.nvim_buf_get_name(0)

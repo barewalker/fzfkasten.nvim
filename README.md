@@ -21,7 +21,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **Link Insertion**: Interactive link insertion with `[[` trigger.
 - [x] **Follow Link**: Jump to the link under the cursor (or pick from all links in the buffer). Resolves notes recursively across sub-directories, and can create missing notes from a template. Mappable to `gf` with a native-`gf` fallback.
 - [x] **Backlinks**: Find all notes linking to the current note.
-- [x] **Rename Note**: Rename a note and automatically update all internal links.
+- [x] **Rename Note**: Rename a note and retarget every link to it — see [Renaming](#renaming-a-note).
 - [x] **Template Engine**: Simple `{{title}}`, `{{date}}`, and `{{hdate}}` placeholders.
 - [x] **External Commands**: Append external data (like `gcalcli`) to daily notes.
 - [x] **Fzfkasten Panel**: A central menu for common actions (Open, Backlinks, Rename, Delete).
@@ -782,6 +782,37 @@ line.
 When a new test passes first time, break the thing it covers and check it goes
 red. Three of these did not at first — one read its expected value out of the
 module it was testing, so it passed for any value that module held.
+
+## Renaming a note
+
+`:FzfKastenRenameNote` moves the note and retargets every link to it across the
+collection. All four link shapes come through:
+
+| Before | After |
+|---|---|
+| `[[old]]` | `[[new]]` |
+| `[[old\|alias]]` | `[[new\|alias]]` |
+| `[[old#heading]]` | `[[new#heading]]` |
+| `[[old#heading\|alias]]` | `[[new#heading\|alias]]` |
+
+The anchor and the alias are carried across untouched: renaming a note moves
+neither the headings inside it nor the words you chose to call it by. Only whole
+names match, so `[[old-notes]]` is not a link to `old`, and `[[#top]]` — an
+anchor within the same note, with no name — belongs to nobody.
+
+This is the widest write in the plugin, so two things about how it goes about
+it are worth knowing:
+
+- **The file moves first.** Rewriting the links and then failing to move would
+  point every one of them at a name that does not exist — a whole collection
+  broken by a rename that never happened. A failure at the move changes nothing
+  at all.
+- **A note you have open with unsaved changes is edited in its buffer**, not on
+  disk. Writing the file underneath it would be overwritten by your next `:w`,
+  leaving that one note pointing at the old name, silently. Your `:w` now
+  carries both your edits and the new links.
+
+It says how many notes it touched, since it rewrites files you do not have open.
 
 ## Health check
 

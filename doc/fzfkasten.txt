@@ -56,6 +56,12 @@ COMMANDS
   preview = { enabled, height }, keys).
 - FzfKastenTaskListInbox: The same buffer, showing the inbox.
 - FzfKastenTaskToggle: Toggle the checkbox on the current line.
+- FzfKastenRenameNote: Rename the current note and retarget every link to it:
+  [[old]], [[old|alias]], [[old#heading]] and [[old#heading|alias]] all follow,
+  anchor and alias untouched. Only whole names match, so [[old-notes]] is not a
+  link to [[old]]. The file moves before any link is rewritten, so a failed
+  move changes nothing; a note you have open with unsaved changes is edited in
+  its buffer rather than underneath it. Reports how many notes it touched.
 - FzfKastenTaskAdd: Capture a new task to one fixed note (tasks.capture_note,
   or the first tasks.always entry). Takes text, or prompts with no argument.
 - FzfKastenTaskInbox: Triage checkboxes not tagged as tasks. <ctrl-t> tags one.
