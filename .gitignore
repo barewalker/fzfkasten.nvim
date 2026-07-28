@@ -6,6 +6,9 @@ fzfkasten_spec.md
 
 # Testing and Examples
 minimal_init.lua
+# ...except the suite's own, which `make test` and the README both point at:
+# without it a clone cannot run the tests at all.
+!tests/minimal_init.lua
 fzfkasten.lua
 fzfkasten-lazyvim-example.lua
 fzfkasten-lazyvim-keys-example.lua
