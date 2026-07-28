@@ -404,6 +404,32 @@ local function open_window(where)
     end
 end
 
+-- The window in this tab already showing the list, if there is one.
+local function window_showing()
+    if not alive() then return nil end
+    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+        if vim.api.nvim_win_get_buf(win) == buf then
+            return win
+        end
+    end
+    return nil
+end
+
+-- Where `<enter>` should put a note: the window you came from -- unless you came
+-- from the list itself, in which case the one it already had, or coming back to
+-- the list and pressing `<enter>` would open the note straight over it. Under
+-- `open = "full"` the list *is* its own origin, and `open_task` edits in place.
+local function resolve_origin(from, list_win)
+    if from ~= list_win then
+        return from
+    end
+    local previous = view and view.origin
+    if previous and previous ~= list_win and vim.api.nvim_win_is_valid(previous) then
+        return previous
+    end
+    return from
+end
+
 local function create_buffer()
     local created = vim.api.nvim_create_buf(false, true)
     pcall(vim.api.nvim_buf_set_name, created, NAME)
@@ -437,12 +463,21 @@ end
 function M.open(opts)
     opts = opts or {}
     local origin = vim.api.nvim_get_current_win()
-    open_window(options().open or "full")
 
-    if not alive() then
-        buf = create_buffer()
+    -- Already on screen: focus it. Reopening is how you come back to the list,
+    -- and coming back to something you are already looking at should not split
+    -- the screen a second time onto the same buffer.
+    local shown = window_showing()
+    if shown then
+        origin = resolve_origin(origin, shown)
+        vim.api.nvim_set_current_win(shown)
+    else
+        open_window(options().open or "full")
+        if not alive() then
+            buf = create_buffer()
+        end
+        vim.api.nvim_win_set_buf(0, buf)
     end
-    vim.api.nvim_win_set_buf(0, buf)
 
     -- Keep the ordering you were last looking at when reopening, unless this
     -- call asks for something specific: reopening the list should hand it back

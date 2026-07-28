@@ -243,6 +243,36 @@ describe("tasklist: configuration", function()
         vim.cmd("only")
     end)
 
+    -- Reopening is how you come back to the list. Coming back to something you
+    -- are already looking at must not split the screen onto the same buffer.
+    it("focuses the list instead of opening a second window onto it", function()
+        setup({ tasks = { list = { open = "vsplit", preview = { enabled = false } } } })
+        note("n.md", { "- [ ] alpha #todo" })
+        tasklist.open()
+        local wins = #vim.api.nvim_tabpage_list_wins(0)
+        vim.cmd("wincmd p")
+        tasklist.open()
+        assert.are.equal(wins, #vim.api.nvim_tabpage_list_wins(0))
+        assert.are.equal(tasklist._test.bufnr(), vim.api.nvim_get_current_buf())
+        vim.cmd("only")
+    end)
+
+    -- ...and pressing it from the list itself must not make the list its own
+    -- origin, or the next <enter> would open the note over the list.
+    it("keeps <enter> off the list when reopened from the list", function()
+        setup({ tasks = { list = { open = "vsplit", preview = { enabled = false } } } })
+        note("n.md", { "- [ ] alpha #todo" })
+        tasklist.open()
+        local list_win = vim.api.nvim_get_current_win()
+        tasklist.open()
+        goto_row("alpha")
+        press("<CR>")
+        assert.are.equal(home .. "/n.md", vim.api.nvim_buf_get_name(0))
+        assert.are_not.equal(list_win, vim.api.nvim_get_current_win())
+        assert.are.equal(tasklist._test.bufnr(), vim.api.nvim_win_get_buf(list_win))
+        vim.cmd("only")
+    end)
+
     it("open = full takes the current window", function()
         setup({ tasks = { list = { open = "full", preview = { enabled = false } } } })
         note("n.md", { "- [ ] alpha #todo" })
