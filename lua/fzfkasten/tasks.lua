@@ -21,7 +21,6 @@ local kensaku = require('fzfkasten.kensaku')
 
 local M = {}
 
-local DAY = 86400
 
 -- A broken `tasks.date`/`tasks.filter` hook would otherwise warn once per
 -- note (or per task) scanned.
@@ -520,18 +519,18 @@ local function resolve_due(spec, now)
     -- Japanese keys don't lowercase, so try the raw spec for those.
     local off = REL_OFFSETS[key] or REL_OFFSETS[spec]
     if off then
-        return os.date("%Y-%m-%d", now + off * DAY)
+        return os.date("%Y-%m-%d", utils.days_from(now, off))
     end
     local n, unit = key:match("^%+?(%d+)([dw])$")
     if n then
         local mult = unit == "w" and 7 or 1
-        return os.date("%Y-%m-%d", now + tonumber(n) * mult * DAY)
+        return os.date("%Y-%m-%d", utils.days_from(now, tonumber(n) * mult))
     end
     local wd = WEEKDAYS[key] or WEEKDAYS[spec]
     if wd then
         local today_wd = tonumber(os.date("%w", now))
         local delta = (wd - today_wd) % 7
-        return os.date("%Y-%m-%d", now + delta * DAY)
+        return os.date("%Y-%m-%d", utils.days_from(now, delta))
     end
     return nil
 end
@@ -673,7 +672,8 @@ function M.collect(opts)
     if since == nil then
         since = o.since_days
     end
-    local cutoff = since and since ~= false and os.date("%Y-%m-%d", os.time() - since * DAY) or nil
+    local cutoff = since and since ~= false
+        and os.date("%Y-%m-%d", utils.days_from(nil, -since)) or nil
 
     date_hook_warned = false
     filter_hook_warned = false
