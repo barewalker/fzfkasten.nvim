@@ -624,12 +624,12 @@ function M.log_entries(now)
 
     local daily = config.options.notes.daily
     for i = 0, (daily.lookback_days or 30) - 1 do
-        local t = now - i * 86400
+        local t = utils.days_from(now, -i)
         add("daily", os.date("%Y-%m-%d (%a)", t), t)
     end
     local weekly = config.options.notes.weekly
     for i = 0, (weekly.lookback_weeks or 8) - 1 do
-        local t = now - i * 7 * 86400
+        local t = utils.days_from(now, -i * 7)
         add("weekly", os.date(weekly.format, t), t)
     end
     return entries, lookup

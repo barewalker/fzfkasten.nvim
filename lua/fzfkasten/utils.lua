@@ -5,6 +5,30 @@ function M.join_path(...)
     return (table.concat({...}, "/"):gsub("//+", "/"))
 end
 
+--- `days` calendar days from `now`, as a timestamp. Negative counts backwards.
+---
+--- Counted in calendar days rather than 86400-second steps, because on the day
+--- the clocks change a day is 23 or 25 hours long and stepping by seconds lands
+--- on the wrong date: a log picker built that way skips the changeover day
+--- entirely -- you cannot reach that day's note -- and `due:tomorrow` writes
+--- yesterday's date into a note.
+---
+--- Normalising at midday is what makes it safe: an hour either way can then
+--- never move the date. `os.time` renormalises an out-of-range day, so month,
+--- year and leap-day boundaries need no arithmetic of their own.
+--- @param now integer|nil timestamp to count from; defaults to the current time
+--- @param days integer
+--- @return integer
+function M.days_from(now, days)
+    local t = os.date("*t", now or os.time())
+    t.day = t.day + days
+    t.hour, t.min, t.sec = 12, 0, 0
+    -- Let the C library work out whether the result is in DST; keeping the
+    -- source day's flag would reintroduce the hour this is here to avoid.
+    t.isdst = nil
+    return os.time(t)
+end
+
 --- Split the inside of a wikilink into its parts: `[[name#anchor|alias]]`, of
 --- which the last two are optional.
 ---
