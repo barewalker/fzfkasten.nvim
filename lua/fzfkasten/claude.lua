@@ -86,4 +86,115 @@ function M.toggle_terminal()
  terminal.focus_toggle()
 end
 
+-- Notes a prompt may open before sending its text, so Claude has that note as
+-- its active context. "current" (or nil) opens nothing and sends from wherever
+-- you are. weekly/daily reuse core.open_note, which creates the note from its
+-- template when it doesn't exist yet.
+local VALID_NOTES = { weekly = true, daily = true, current = true }
+
+--- The configured prompt names, sorted -- for command completion. Reads config
+--- only, so it works (returning {}) even when Claude integration is disabled.
+--- @return string[]
+function M.prompt_names()
+ local prompts = config.options.claude and config.options.claude.prompts or {}
+ local names = vim.tbl_keys(prompts)
+ table.sort(names)
+ return names
+end
+
+-- Resolve `name` against the `prompts` table into a validated entry. Returns
+-- (prompt, nil) on success, or (nil, code) where code is one of "empty" (no
+-- name given), "unknown", "no-text", "bad-note" -- send_prompt turns each into
+-- a message. Pure, so it is unit-tested without claudecode installed.
+local function resolve_prompt(prompts, name)
+ prompts = prompts or {}
+ if not name or vim.trim(name) == "" then
+  return nil, "empty"
+ end
+ local prompt = prompts[name]
+ if not prompt then
+  return nil, "unknown"
+ end
+ if type(prompt.text) ~= "string" or vim.trim(prompt.text) == "" then
+  return nil, "no-text"
+ end
+ if prompt.note ~= nil and not VALID_NOTES[prompt.note] then
+  return nil, "bad-note"
+ end
+ return prompt, nil
+end
+
+-- A newly created terminal needs a beat before Claude is up to read a paste, so
+-- a fresh launch defers the send by this much; an already-running terminal is
+-- sent to at once.
+local STARTUP_DELAY_MS = 300
+
+--- Send a configured prompt (config.claude.prompts[name]) to the Claude
+--- terminal, first opening the prompt's note so Claude has it as context.
+--- @param name string|nil
+function M.send_prompt(name)
+ local claudecode = guard()
+ if not claudecode then return end
+
+ local prompts = config.options.claude.prompts or {}
+ local prompt, err = resolve_prompt(prompts, name)
+ if not prompt then
+  local names = M.prompt_names()
+  local listed = #names > 0 and (" Configured: " .. table.concat(names, ", ") .. ".")
+   or " No prompts are configured (set claude.prompts in setup())."
+  if err == "empty" then
+   vim.notify("[Fzfkasten] Usage: :FzfKastenClaudePrompt <name>." .. listed,
+    vim.log.levels.WARN)
+  elseif err == "unknown" then
+   vim.notify("[Fzfkasten] No claude.prompts entry named '" .. name .. "'." .. listed,
+    vim.log.levels.WARN)
+  elseif err == "no-text" then
+   vim.notify("[Fzfkasten] Prompt '" .. name .. "' has no `text` to send.",
+    vim.log.levels.WARN)
+  else -- bad-note
+   vim.notify("[Fzfkasten] Prompt '" .. name .. "' has an unknown `note` ("
+    .. tostring(prompt and prompt.note) .. "); use weekly, daily or current.",
+    vim.log.levels.WARN)
+  end
+  return
+ end
+
+ local tok, terminal = pcall(require, "claudecode.terminal")
+ if not tok or not terminal then
+  vim.notify("[Fzfkasten] claudecode.terminal module not found.", vim.log.levels.ERROR)
+  return
+ end
+
+ -- Open the note first, so it is the active buffer Claude reads as context.
+ if prompt.note == "weekly" or prompt.note == "daily" then
+  require("fzfkasten.core").open_note(prompt.note)
+ end
+
+ -- ensure_visible creates the terminal if there isn't one; send_to_terminal
+ -- itself never opens one. Remember whether one was already running: only a
+ -- fresh launch needs the startup grace before the paste will land.
+ local existed = terminal.get_active_terminal_bufnr() ~= nil
+ terminal.ensure_visible()
+
+ local submit = prompt.submit ~= false
+ local function send()
+  local ok = terminal.send_to_terminal(prompt.text, { submit = submit })
+  if not ok then
+   vim.notify("[Fzfkasten] Could not send prompt '" .. name
+    .. "' to the Claude terminal.", vim.log.levels.WARN)
+  end
+ end
+ if existed then
+  send()
+ else
+  vim.defer_fn(send, STARTUP_DELAY_MS)
+ end
+end
+
+-- Pure helpers exposed for tests (see tests/claude_spec.lua).
+M._test = {
+ resolve_prompt = resolve_prompt,
+ VALID_NOTES = VALID_NOTES,
+}
+
 return M
