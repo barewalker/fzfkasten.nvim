@@ -161,16 +161,23 @@ M.defaults = {
     inbox = "i",     -- switch between the task list and the inbox
     refresh = "r",   -- re-scan the notes
     close = "q",
-    -- The preview. `<c-e>`/`<c-y>`/`<c-f>`/`<c-b>` do to the split below what
-    -- they do to any window in Vim; only the window they act on differs, so
-    -- there is nothing new to remember. `p` steps into it, where the rest of
-    -- Vim (`gg`, `/`, `<c-d>`) applies as usual and `q` comes back.
+    -- The preview. All three of Vim's scroll pairs are pointed at the split
+    -- below, so the rule is one line: scrolling is the preview, the list moves
+    -- by cursor. They do there exactly what they do to any window in Vim, so
+    -- there is nothing new to remember -- and `<c-d>`/`<c-u>`, the pair hands
+    -- actually reach for, lands where you are looking. With no preview up they
+    -- fall through to Vim's own behaviour on the list.
+    -- `p` steps into the preview, where the rest of Vim (`gg`, `/`) applies as
+    -- usual and `preview_back` comes out again.
     preview = "p",
     preview_toggle = "P",
-    preview_down = "<C-e>",
-    preview_up = "<C-y>",
+    preview_back = "q",              -- pressed inside the preview window
+    preview_half_page_down = "<C-d>",
+    preview_half_page_up = "<C-u>",
     preview_page_down = "<C-f>",
     preview_page_up = "<C-b>",
+    preview_down = "<C-e>",
+    preview_up = "<C-y>",
    },
   },
   -- When set (e.g. "todo"), only checkboxes carrying `#<require_tag>` count as

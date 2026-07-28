@@ -194,13 +194,18 @@ local function open_preview()
         vim.bo[preview.buf].swapfile = false
         vim.bo[preview.buf].buflisted = false
         vim.bo[preview.buf].modifiable = false
-        -- Out of the preview and back to the list, the same key that leaves the
-        -- list itself -- `q` gets you out of wherever you are.
-        vim.keymap.set("n", "q", function()
-            if view and view.win and vim.api.nvim_win_is_valid(view.win) then
-                vim.api.nvim_set_current_win(view.win)
-            end
-        end, { buffer = preview.buf, nowait = true, desc = "Fzfkasten task list: back to the list" })
+        -- Out of the preview and back to the list. Defaults to `q`, the same key
+        -- that leaves the list itself -- `q` gets you out of wherever you are --
+        -- but it is `keys.preview_back` like everything else, and `false` leaves
+        -- the key alone (`<c-w>p` still works, it being an ordinary window).
+        local back = keys().preview_back
+        if back and back ~= "" then
+            vim.keymap.set("n", back, function()
+                if view and view.win and vim.api.nvim_win_is_valid(view.win) then
+                    vim.api.nvim_set_current_win(view.win)
+                end
+            end, { buffer = preview.buf, nowait = true, desc = "Fzfkasten task list: back to the list" })
+        end
     end
 
     vim.cmd("belowright split")
@@ -234,15 +239,19 @@ local function close_preview_unless_shown()
     end)
 end
 
--- Scroll the preview without leaving the list. `keys` is a normal-mode scroll
--- command; it runs in the preview window, so `<c-e>`/`<c-f>` mean there what
--- they mean anywhere in Vim -- only the window they act on is different.
+-- Scroll the preview without leaving the list. `command` is a normal-mode
+-- scroll command, run in the preview window: `<c-d>`, `<c-f>` and the rest mean
+-- there exactly what they mean anywhere in Vim, and only the window they act on
+-- is different. All six of Vim's scroll pairs point here, so the rule is one
+-- line -- scrolling is the preview, the list moves by cursor -- rather than
+-- some keys going one way and some the other.
+--
+-- With no preview up (`preview.enabled = false`, or `P` pressed) the key falls
+-- through to what Vim would have done with it in the list. Swallowing it to
+-- report the obvious would take away the scrolling and give nothing back.
 local function scroll_preview(command)
-    if not preview_alive() then
-        vim.notify("[Fzfkasten] The preview is not open.", vim.log.levels.INFO)
-        return
-    end
-    vim.api.nvim_win_call(preview.win, function()
+    local win = preview_alive() and preview.win or 0
+    vim.api.nvim_win_call(win, function()
         vim.cmd.normal({ vim.keycode(command), bang = true })
     end)
 end
@@ -392,10 +401,15 @@ local ACTIONS = {
             draw_preview(current_task())
         end
     end,
-    preview_down = function() scroll_preview("<C-e>") end,
-    preview_up = function() scroll_preview("<C-y>") end,
+    -- Vim's three scroll pairs, all pointed at the preview. `<c-d>`/`<c-u>` is
+    -- the one hands actually reach for, so leaving it on the list -- which is a
+    -- dozen rows you move through with `j` -- spent it on the wrong window.
+    preview_half_page_down = function() scroll_preview("<C-d>") end,
+    preview_half_page_up = function() scroll_preview("<C-u>") end,
     preview_page_down = function() scroll_preview("<C-f>") end,
     preview_page_up = function() scroll_preview("<C-b>") end,
+    preview_down = function() scroll_preview("<C-e>") end,
+    preview_up = function() scroll_preview("<C-y>") end,
 }
 
 -- Where the list opens. Everything but "full" leaves the window you were in, so

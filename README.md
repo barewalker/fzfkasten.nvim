@@ -285,8 +285,9 @@ Tasks — 14   ·   priority
 | `q` | Close |
 | `p` | Step into the preview; `q` comes back |
 | `P` | Show or hide the preview |
-| `<c-e>` / `<c-y>` | Scroll the preview a line |
+| `<c-d>` / `<c-u>` | Scroll the preview half a screen |
 | `<c-f>` / `<c-b>` | Scroll the preview a page |
+| `<c-e>` / `<c-y>` | Scroll the preview a line |
 
 Everything else is Vim's, untouched: `j`, `k`, `gg`, `G`, `/`, `n`, `{`, `}`, `<c-d>`, `<c-u>`. No modifier is needed for anything, which is the point — `x`, `c`, `a`, `u` read as delete, change, append, undo, so there is almost nothing to learn.
 
@@ -311,7 +312,9 @@ Tasks — 14   ·   priority
 
 **It is an ordinary window, which is the whole design.** `p` steps into it and every Vim key works there — `j`, `gg`, `/`, `<c-d>`, `<c-w>p` — because nothing has been reimplemented. `q` comes back to the list.
 
-Without leaving the list, `<c-e>`/`<c-y>`/`<c-f>`/`<c-b>` scroll it. Those mean exactly what they mean anywhere in Vim; only the window they act on is different, so there is no scroll vocabulary to learn. They are free to reuse here because you move through the list with `j`/`k`, not by scrolling it.
+Without leaving the list, **all three of Vim's scroll pairs are pointed at it** — `<c-d>`/`<c-u>` by half a screen, `<c-f>`/`<c-b>` by a page, `<c-e>`/`<c-y>` by a line. They mean exactly what they mean anywhere in Vim; only the window they act on is different, so there is no scroll vocabulary to learn.
+
+Pointing *all* of them there makes the rule one line — **scrolling is the preview, the list moves by cursor** — instead of some keys going one way and some the other. They are free to reuse because you move through the list with `j`/`k`, `gg`, `G` and `/`, not by scrolling it; and with no preview up they fall through to what Vim would have done to the list anyway.
 
 The preview reads a **loaded buffer** in preference to the file, so a note you have open and edited but not written previews as it actually is, not as the file on disk is lagging behind it.
 
@@ -327,7 +330,15 @@ tasks = {
       enabled = true,
       height = 0.5,  -- a fraction of the list window below 1, a line count above
     },
-    keys = { done = "x", cancel = "c", sort = "s" },  -- set one to false to leave it to Vim
+    -- Every key is configurable, including the preview's; false leaves one to Vim.
+    keys = {
+      done = "x", cancel = "c", sort = "s",
+      preview = "p", preview_toggle = "P",
+      preview_back = "q",                -- pressed inside the preview window
+      preview_half_page_down = "<C-d>", preview_half_page_up = "<C-u>",
+      preview_page_down = "<C-f>",      preview_page_up = "<C-b>",
+      preview_down = "<C-e>",           preview_up = "<C-y>",
+    },
   },
 }
 ```

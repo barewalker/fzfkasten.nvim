@@ -388,6 +388,56 @@ describe("tasklist: preview", function()
         assert.are.equal(tasklist._test.bufnr(), vim.api.nvim_get_current_buf())
     end)
 
+    -- All three of Vim's scroll pairs point at the preview, so the rule is one
+    -- line rather than "some keys scroll the list, some the preview".
+    it("every scroll pair moves the preview, not the list", function()
+        note("long.md", vim.fn["repeat"]({ "- [ ] filler #todo" }, 400))
+        press("r")
+        -- A row from the long note: previewing a two-line one leaves nothing to
+        -- scroll, and every assertion below would pass for the wrong reason.
+        goto_row("filler")
+        local p = tasklist._test.preview()
+        local function top()
+            return vim.api.nvim_win_call(p.win, function() return vim.fn.line("w0") end)
+        end
+        local list_top = vim.fn.line("w0")
+        for _, key in ipairs({ "<C-d>", "<C-f>", "<C-e>" }) do
+            local before = top()
+            press(key)
+            assert.is_true(top() > before, key .. " did not scroll the preview down")
+        end
+        for _, key in ipairs({ "<C-u>", "<C-b>", "<C-y>" }) do
+            local before = top()
+            press(key)
+            assert.is_true(top() < before, key .. " did not scroll the preview up")
+        end
+        -- ...and the list stayed where it was throughout.
+        assert.are.equal(list_top, vim.fn.line("w0"))
+        assert.are.equal(tasklist._test.bufnr(), vim.api.nvim_get_current_buf())
+    end)
+
+    -- With no preview up, swallowing the key to report the obvious would take
+    -- the scrolling away and give nothing back.
+    it("falls through to Vim when there is no preview", function()
+        note("long.md", vim.fn["repeat"]({ "- [ ] filler #todo" }, 400))
+        press("r")
+        press("P")
+        assert.is_nil(tasklist._test.preview().win)
+        local before = vim.fn.line("w0")
+        press("<C-d>")
+        assert.is_true(vim.fn.line("w0") > before)
+    end)
+
+    it("takes a different key for stepping back out", function()
+        setup({ tasks = { list = { open = "full", keys = { preview_back = "<Esc>" } } } })
+        note("n.md", { "- [ ] alpha #todo" })
+        tasklist.open()
+        press("p")
+        assert.are.equal(tasklist._test.preview().win, vim.api.nvim_get_current_win())
+        press("<Esc>")
+        assert.are.equal(tasklist._test.bufnr(), vim.api.nvim_get_current_buf())
+    end)
+
     it("closes with the list", function()
         press("q")
         assert.is_nil(tasklist._test.preview().win)
