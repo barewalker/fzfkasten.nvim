@@ -15,6 +15,28 @@ M.defaults = {
    -- `new_note_template` when nil.
    new_note_template = nil,
  },
+   -- `<alt-/>` in the pickers: type `kaigi`, match 会議. Needs a migemo -- a
+   -- romaji-to-regex converter that reaches the kanji too, not just the kana.
+   romaji = {
+     -- "auto" tries ttyskk first, then kensaku.vim. Name one ("ttyskk" /
+     -- "kensaku") to pin it, `false` to turn <alt-/> off, or pass a table of
+     -- your own with available()/regex()/rg_regex().
+     --
+     -- ttyskk first because it costs nothing beyond itself: `ttyskk migemo`
+     -- reads the SKK dictionaries already on the machine, in about 30ms.
+     -- kensaku.vim runs on denops, so it brings Deno and a 2.1MB dictionary
+     -- download with it. Both answer the same question.
+     backend = "auto",
+     ttyskk = {
+       cmd = "ttyskk",
+       -- Cap on dictionary candidates, passed through as `--limit`. nil leaves
+       -- ttyskk's own default, which is what the pattern length was tuned for.
+       limit = nil,
+       -- This runs in front of the user, so a hung migemo must not be a hung
+       -- Neovim. Milliseconds.
+       timeout = 5000,
+     },
+   },
    patterns = {
      tag = [[#([%w_-]+)]],
      link = [=[%[%[(.-)%]%]]=],

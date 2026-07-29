@@ -2,7 +2,7 @@ local fzf = require('fzf-lua')
 local config = require('fzfkasten.config')
 local utils = require('fzfkasten.utils') -- Added for path joining if needed later
 local buffer = require('fzfkasten.buffer') -- Opens notes and applies per-buffer opt-outs
-local kensaku = require('fzfkasten.kensaku') -- Optional romaji narrowing (<alt-/>)
+local romaji = require('fzfkasten.romaji') -- Optional romaji narrowing (<alt-/>)
 local M = {}
 
 -- Every note file under `home`, as a path relative to `home` -- the same shape
@@ -31,30 +31,30 @@ function M.find_notes(filter)
         fzf.files(vim.tbl_deep_extend("force", config.options.fzf.files, {
             cwd = config.options.home,
             prompt = "Notes> ",
-            fzf_opts = { ["--header"] = kensaku.header_hint("") },
+            fzf_opts = { ["--header"] = romaji.header_hint("") },
             actions = {
                 ['default'] = open,
-                ['alt-/'] = kensaku.action(function(re) M.find_notes(re) end, nil),
+                ['alt-/'] = romaji.action(function(re) M.find_notes(re) end, nil),
             },
         }))
         return
     end
 
-    -- Filtered: kensaku can't reach into `fzf.files`, so list the notes
+    -- Filtered: the romaji backend can't reach into `fzf.files`, so list the notes
     -- ourselves and keep the ones whose path the romaji regex matches. The
     -- builtin previewer still shows each note (paths are relative to `home`).
     local shown = {}
     for _, rel in ipairs(note_rel_paths()) do
-        if kensaku.matches(rel, filter) then shown[#shown + 1] = rel end
+        if romaji.matches(rel, filter) then shown[#shown + 1] = rel end
     end
     fzf.fzf_exec(shown, vim.tbl_deep_extend("force", config.options.fzf, {
         cwd = config.options.home,
-        prompt = kensaku.prompt("Notes", filter),
+        prompt = romaji.prompt("Notes", filter),
         previewer = "builtin",
-        fzf_opts = { ["--header"] = kensaku.header_hint("") },
+        fzf_opts = { ["--header"] = romaji.header_hint("") },
         actions = {
             ['default'] = open,
-            ['alt-/'] = kensaku.action(function(re) M.find_notes(re) end, filter),
+            ['alt-/'] = romaji.action(function(re) M.find_notes(re) end, filter),
         },
     }))
 end
@@ -152,10 +152,10 @@ function M.insert_link(filter)
         fzf.files(vim.tbl_deep_extend("force", config.options.fzf.files, {
             cwd = config.options.home,
             prompt = "Insert Link> ",
-            fzf_opts = { ["--header"] = kensaku.header_hint("") },
+            fzf_opts = { ["--header"] = romaji.header_hint("") },
             actions = {
                 ['default'] = insert,
-                ['alt-/'] = kensaku.action(function(re) M.insert_link(re) end, nil),
+                ['alt-/'] = romaji.action(function(re) M.insert_link(re) end, nil),
             },
         }))
         return
@@ -165,16 +165,16 @@ function M.insert_link(filter)
     -- matches so a Japanese-titled note is reachable without typing Japanese.
     local shown = {}
     for _, rel in ipairs(note_rel_paths()) do
-        if kensaku.matches(rel, filter) then shown[#shown + 1] = rel end
+        if romaji.matches(rel, filter) then shown[#shown + 1] = rel end
     end
     fzf.fzf_exec(shown, vim.tbl_deep_extend("force", config.options.fzf, {
         cwd = config.options.home,
-        prompt = kensaku.prompt("Insert Link", filter),
+        prompt = romaji.prompt("Insert Link", filter),
         previewer = "builtin",
-        fzf_opts = { ["--header"] = kensaku.header_hint("") },
+        fzf_opts = { ["--header"] = romaji.header_hint("") },
         actions = {
             ['default'] = insert,
-            ['alt-/'] = kensaku.action(function(re) M.insert_link(re) end, filter),
+            ['alt-/'] = romaji.action(function(re) M.insert_link(re) end, filter),
         },
     }))
 end
@@ -197,28 +197,28 @@ function M.search_content(filter)
             cwd = config.options.home,
             prompt = "Grep> ",
             no_ignore = true,
-            fzf_opts = { ["--header"] = kensaku.header_hint("") },
+            fzf_opts = { ["--header"] = romaji.header_hint("") },
             actions = {
                 ['default'] = open,
-                ['alt-/'] = kensaku.grep_action(function(re) M.search_content(re) end, nil),
+                ['alt-/'] = romaji.grep_action(function(re) M.search_content(re) end, nil),
             },
         }))
         return
     end
 
-    -- Filtered: kensaku turned the romaji into an rg regex, so grep for it once
+    -- Filtered: the backend turned the romaji into an rg regex, so grep for it once
     -- (`no_esc` -- it is already a pattern) and let fzf narrow the hits. This is
     -- where romaji pays off most: note bodies are mostly Japanese.
     fzf.grep(vim.tbl_deep_extend("force", config.options.fzf, {
         search = filter,
         no_esc = true,
         cwd = config.options.home,
-        prompt = kensaku.prompt("Grep", filter),
+        prompt = romaji.prompt("Grep", filter),
         no_ignore = true,
-        fzf_opts = { ["--header"] = kensaku.header_hint("") },
+        fzf_opts = { ["--header"] = romaji.header_hint("") },
         actions = {
             ['default'] = open,
-            ['alt-/'] = kensaku.grep_action(function(re) M.search_content(re) end, filter),
+            ['alt-/'] = romaji.grep_action(function(re) M.search_content(re) end, filter),
         },
     }))
 end
