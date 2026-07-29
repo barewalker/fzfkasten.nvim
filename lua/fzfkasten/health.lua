@@ -135,10 +135,21 @@ end
 local function check_optional()
     health.start("Optional integrations")
 
-    if require("fzfkasten.kensaku").available() then
-        health.ok("kensaku.vim: <alt-/> narrows by romaji")
+    -- Which backend answered matters as much as whether one did: they are not
+    -- interchangeable in cost (kensaku brings Deno with it) and a machine with
+    -- both will silently pick one.
+    local romaji = require("fzfkasten.romaji")
+    local backend = romaji.backend_name()
+    if backend == "ttyskk" then
+        health.ok("romaji narrowing via ttyskk: <alt-/> matches 会議 from `kaigi`")
+    elseif backend == "kensaku" then
+        health.ok("romaji narrowing via kensaku.vim: <alt-/> matches 会議 from `kaigi`", {
+            "kensaku runs on denops, so this needs Deno; `ttyskk migemo` does not.",
+        })
+    elseif backend then
+        health.ok("romaji narrowing via a backend of your own: " .. tostring(backend))
     else
-        health.info("kensaku.vim is not installed; <alt-/> (romaji narrowing) is hidden.")
+        health.info("No romaji backend (ttyskk or kensaku.vim); <alt-/> is hidden.")
     end
 
     local claude = config.options.claude or {}

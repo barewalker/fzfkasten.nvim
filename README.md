@@ -251,7 +251,7 @@ A due date is `due:YYYY-MM-DD`, or `due:YYYY-MM-DDTHH:MM` when a time matters �
 | `<ctrl-d>` | Drop the task: out of the list, still in the note |
 | `<ctrl-t>` | Add `require_tag`, promoting an inbox entry to a task |
 | `<alt-a>` | Capture a new task with a guided input: text (seeded from what you typed), tags picked from those your notes already use, then a due date. Writes to the capture note and reopens the list |
-| `<alt-/>` | Narrow the list by romaji: `kaigi` finds 会議. Needs [kensaku.vim](https://github.com/lambdalisue/kensaku.vim); empty input clears it |
+| `<alt-/>` | Narrow the list by romaji: `kaigi` finds 会議. Needs a romaji backend (ttyskk or kensaku.vim); empty input clears it |
 | `<alt-u>` | Put back the last line any of these rewrote |
 | `<alt-s>` | Cycle the ordering: priority → due → added → priority |
 | `<alt-r>` | Reverse whichever ordering is in force |
@@ -396,9 +396,31 @@ build a jig that takes the hook and the weight pan  ← how hard is it to pull t
 
 That happens when the line above is a plain bullet (no checkbox, so nothing to indent under), or when the parent task was filtered out of the view — an open step under a finished item, say. Either way the task line stops being a fragment you have to open the note to understand. The same context shows up in the inbox, where a checkbox is most likely to be missing the words that made it make sense.
 
-If your notes are written in Japanese, fzf's own filter needs you to type Japanese to match them. **`<alt-/>` lets you narrow by romaji instead**: it asks for a query (seeded from whatever you had typed), hands it to [kensaku.vim](https://github.com/lambdalisue/kensaku.vim) to build a matcher, and reopens the picker showing only what matches — so `kaigi` surfaces 会議 without leaving your keyboard's Latin layout. Empty input clears the filter; the prompt gains `(romaji)` while one is active. The key only appears when kensaku is installed — it is an optional dependency, not required.
+If your notes are written in Japanese, fzf's own filter needs you to type Japanese to match them. **`<alt-/>` lets you narrow by romaji instead**: it asks for a query (seeded from whatever you had typed), turns it into a matcher, and reopens the picker showing only what matches — so `kaigi` surfaces 会議 without leaving your keyboard's Latin layout. Empty input clears the filter; the prompt gains `(romaji)` while one is active. The key only appears when something is installed that can do the conversion — it is an optional dependency, not required.
 
 The same `<alt-/>` works across fzfkasten, not just the task list: it narrows the note finder (`:FzfKastenFindNotes`) and link insertion (`:FzfKastenInsert`) by note title, and drives a romaji **content search** in `:FzfKastenSearchContent` — that last one is where it pays off most, since note bodies are mostly Japanese while filenames often are not.
+
+#### Romaji backends
+
+Reaching 会議 from `kaigi` takes a migemo — a converter that reaches the *kanji*, which needs a reading-to-headword dictionary and not just a kana table. Two programs can do it, and fzfkasten will use either:
+
+| | what it is | what it costs |
+|---|---|---|
+| [ttyskk](https://github.com/barewalker/ttyskk) | `ttyskk migemo`, reading the SKK dictionaries already on the machine | nothing beyond itself; ~30ms per query |
+| [kensaku.vim](https://github.com/lambdalisue/kensaku.vim) | a denops plugin | Deno, plus a 2.1MB dictionary downloaded on first use |
+
+`romaji.backend` decides. The default `"auto"` tries ttyskk first and falls back to kensaku, so a machine with either just works.
+
+```lua
+romaji = {
+  backend = "auto",              -- or "ttyskk" / "kensaku" / false / a table of your own
+  ttyskk = { cmd = "ttyskk", limit = nil, timeout = 5000 },
+}
+```
+
+Naming one pins it: asked for ttyskk on a machine without it, `<alt-/>` stays hidden rather than quietly starting Deno instead. `false` turns the key off entirely. To supply your own, pass a table with `available()`, `regex(romaji)` (a `\m` Vim regex) and `rg_regex(romaji)` (a ripgrep pattern) — both flavours are needed, because the pickers filter in Lua while content search shells out to `rg`, and handing `rg` a Vim pattern does not fail, it matches nothing.
+
+`:checkhealth fzfkasten` reports which backend answered.
 
 ### Choosing what counts as a task
 

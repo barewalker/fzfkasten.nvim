@@ -17,7 +17,7 @@ local fzf = require('fzf-lua')
 local config = require('fzfkasten.config')
 local utils = require('fzfkasten.utils')
 local buffer = require('fzfkasten.buffer')
-local kensaku = require('fzfkasten.kensaku')
+local romaji = require('fzfkasten.romaji')
 
 local M = {}
 
@@ -1505,12 +1505,12 @@ function M.pick(opts)
     -- regenerate them: that keeps the cursor where it is, and the next task
     -- moves up into place. Rebuilding the picker would send it back to the top.
     --
-    -- `opts.filter`, when set by `<alt-/>`, is a `\m` Vim regex kensaku built
+    -- `opts.filter`, when set by `<alt-/>`, is a `\m` Vim regex the romaji backend built
     -- from a romaji query; keep only the tasks whose text it matches so you can
     -- narrow a Japanese list without typing Japanese.
     local function contents(cb)
         for _, task in ipairs(M.collect(opts)) do
-            if kensaku.matches(task.text, opts.filter) then
+            if romaji.matches(task.text, opts.filter) then
                 cb(to_entry(task))
             end
         end
@@ -1542,7 +1542,7 @@ function M.pick(opts)
         label = label .. " (" .. (opts.sort or SORTS[1])
             .. (opts.reverse and ", reversed" or "") .. ")"
     end
-    local header = kensaku.header_hint(config.options.tasks.require_tag and opts.inbox
+    local header = romaji.header_hint(config.options.tasks.require_tag and opts.inbox
         and "<ctrl-t> tag as task   <ctrl-x> mark done   <ctrl-d> cancel   <alt-a> add   <alt-u> undo   <alt-s> sort   <alt-r> reverse"
         or "<ctrl-x> mark done   <ctrl-d> cancel   <alt-a> add   <alt-u> undo   <alt-s> sort   <alt-r> reverse")
 
@@ -1555,7 +1555,7 @@ function M.pick(opts)
     end
 
     fzf.fzf_exec(contents, vim.tbl_deep_extend("force", config.options.fzf, {
-        prompt = kensaku.prompt(label, opts.filter),
+        prompt = romaji.prompt(label, opts.filter),
         -- Entries carry paths relative to `home`; without this the previewer
         -- resolves them against Neovim's cwd and fails to stat the note.
         cwd = config.options.home,
@@ -1661,10 +1661,10 @@ function M.pick(opts)
                 end,
                 field_index = "{q}",
             },
-            -- Narrow the list by romaji: kensaku turns what you type into a Vim
+            -- Narrow the list by romaji: the backend turns what you type into a Vim
             -- regex over the task text (matched in `contents`), so `kaigi` finds
             -- 会議. Reopens the picker with the new filter in `opts.filter`.
-            ['alt-/'] = kensaku.action(function(re)
+            ['alt-/'] = romaji.action(function(re)
                 local next_opts = vim.tbl_extend("force", opts, {})
                 next_opts.filter = re
                 -- The romaji query is what narrows now; keeping the fzf query

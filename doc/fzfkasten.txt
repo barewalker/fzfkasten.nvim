@@ -9,6 +9,30 @@ the notes directory, fzf-lua and the `fzf` binary, ripgrep, the templates you
 configured, and where captured tasks will land. Reach for it first when a
 picker opens empty or a command quietly does nothing.
 
+ROMAJI
+
+`<alt-/>` in the pickers narrows by romaji: type `kaigi`, match 会議. That
+takes a migemo -- a converter that reaches the kanji, which needs a
+reading-to-headword dictionary and not just a kana table. Two programs can do
+it and either will be used:
+
+  ttyskk    `ttyskk migemo`, reading the SKK dictionaries already on the
+            machine. Nothing beyond itself, about 30ms per query.
+  kensaku   kensaku.vim, which runs on denops and so brings Deno with it,
+            plus a 2.1MB dictionary downloaded on first use.
+
+`romaji.backend` decides. The default "auto" tries ttyskk first and falls back
+to kensaku, so a machine with either just works. Name one ("ttyskk" /
+"kensaku") to pin it -- asked for ttyskk on a machine without it, <alt-/>
+stays hidden rather than quietly starting Deno instead. `false` turns the key
+off. A table of your own with available() / regex() / rg_regex() supplies a
+backend; both flavours are needed, since the pickers filter in Lua with a `\m`
+Vim regex while content search shells out to `rg`, and handing `rg` a Vim
+pattern does not fail -- it matches nothing.
+
+`ttyskk` takes cmd, limit and timeout under `romaji.ttyskk`.
+`:checkhealth fzfkasten` reports which backend answered.
+
 COMMANDS
 
 - FzfKastenDaily: Open today's daily note.
@@ -16,17 +40,17 @@ COMMANDS
 - FzfKastenLog: Browse recent daily/weekly notes by date in one picker --
   existing notes preview and open, a date with no note is created from its
   template. <ctrl-x> enters a date manually. (FzfKastenPickDailyDate is an alias.)
-- FzfKastenFindNotes: Search for notes. <alt-/> narrows by romaji via
-  kensaku.vim (matches note titles); blank input clears it.
+- FzfKastenFindNotes: Search for notes. <alt-/> narrows by romaji (matches
+  note titles); blank input clears it. See ROMAJI below.
 - FzfKastenTags: Search for tags.
 - FzfKastenInsert: Insert a link to a note. <alt-/> narrows by romaji too.
 - FzfKastenSearchContent: Live-grep note bodies. <alt-/> runs a romaji search
-  instead (kensaku.vim builds an rg pattern), which suits Japanese bodies.
+  instead (the backend builds an rg pattern), which suits Japanese bodies.
 - FzfKastenTasks: Pick an open `- [ ]` task and jump to it. <ctrl-x> marks it
   done. <alt-a> captures a new task via a guided input (text, tags picked from
   those already in your notes, then a due date). <alt-/> narrows the list by
-  romaji via kensaku.vim (e.g. `kaigi` finds 会議); shown only when kensaku is
-  installed, blank input clears it.
+  romaji (e.g. `kaigi` finds 会議); shown only when a backend is installed,
+  blank input clears it.
   <alt-s> cycles the ordering (priority -> due -> added -> priority) and
   <alt-r> reverses it; the active ordering shows in the prompt. A task with no
   due date sorts last under `due`, not first.
