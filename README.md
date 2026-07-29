@@ -398,7 +398,15 @@ That happens when the line above is a plain bullet (no checkbox, so nothing to i
 
 If your notes are written in Japanese, fzf's own filter needs you to type Japanese to match them. **`<alt-/>` lets you narrow by romaji instead**: it asks for a query (seeded from whatever you had typed), turns it into a matcher, and reopens the picker showing only what matches — so `kaigi` surfaces 会議 without leaving your keyboard's Latin layout. Empty input clears the filter; the prompt gains `(romaji)` while one is active. The key only appears when something is installed that can do the conversion — it is an optional dependency, not required.
 
-The same `<alt-/>` works across fzfkasten, not just the task list: it narrows the note finder (`:FzfKastenFindNotes`) and link insertion (`:FzfKastenInsert`) by note title, and drives a romaji **content search** in `:FzfKastenSearchContent` — that last one is where it pays off most, since note bodies are mostly Japanese while filenames often are not.
+The same `<alt-/>` drives link insertion (`:FzfKastenInsert`) and a romaji **content search** in `:FzfKastenSearchContent` — that last one is where it pays off most, since note bodies are mostly Japanese while filenames often are not.
+
+**The note finder does it without a second key.** In `:FzfKastenFindNotes`, a query beginning with `/` is romaji: type `/kaigi` and the list narrows to notes matching 会議. Anything else is fzf's own fuzzy matching, unchanged — `nvmcfg` still finds `nvim/config/init.lua`, ranked the way fzf ranks it. The header says so, with the example rather than a description of one:
+
+```
+prefix / for romaji:  /kaigi → 会議
+```
+
+The `/` token is borrowed from [fzf-jp-extension](https://github.com/takumayokoo/fzf-jp-extension), which patches it into fzf itself; doing it outside keeps stock fzf. Matching runs per keystroke — the note index is built once when the picker opens (~30ms over 464 notes), a plain query costs ~6ms through `fzf --filter`, and a romaji one ~40ms. With no backend installed, `/kaigi` simply matches the text `kaigi` and the header stays quiet.
 
 #### Romaji backends
 
@@ -411,7 +419,7 @@ Reaching 会議 from `kaigi` takes a migemo — a converter that reaches the *ka
 
 `romaji.backend` decides. The default `"auto"` tries ttyskk first and falls back to kensaku, so a machine with either just works.
 
-`romaji.headings` decides what the note finder matches. Filenames alone are thin ground: a collection can be written entirely in Japanese and still be filed under ASCII names — of 464 notes measured, 32 had any Japanese in the filename against 135 that carried it in their headings. So `:FzfKastenFindNotes` and `:FzfKastenInsert` match a note's path *and* its headings by default (about 40ms over those 464 notes, only while a filter is active). Set it to `false` for paths only. Bodies are never searched here — that is `:FzfKastenSearchContent`.
+`romaji.headings` decides what a romaji query is matched against. Filenames alone are thin ground: a collection can be written entirely in Japanese and still be filed under ASCII names — of 464 notes measured, 32 had any Japanese in the filename against 135 that carried it in their headings, 1654 headings' worth. So a note matches on its path *and* its own headings by default. Set it to `false` for paths only. Bodies are never searched here — that is `:FzfKastenSearchContent`.
 
 ```lua
 romaji = {

@@ -1,18 +1,26 @@
--- Narrowing the note finder by romaji, and what the filter is matched against.
+-- The note finder, and the two ways of typing into it.
 --
--- Matching filenames alone is what a note finder obviously does, and for a
--- Japanese collection it is nearly useless: the notes are written in Japanese
--- but filed under ASCII names. Measured against a real collection of 464 notes,
--- 32 had any Japanese in the filename; 135 carried it in their headings. So the
--- filter ran, narrowed, and found almost nothing -- which reads as "romaji does
--- not work here" rather than "romaji has nothing to match on here".
+-- A plain query is fzf's, unchanged: `nvmcfg` finds `nvim/config/init.lua`,
+-- ranked the way fzf ranks it. A query beginning with `/` is romaji: `/kaigi`
+-- finds 会議.
 --
--- Headings and not the whole body, because this picker is for finding a note.
--- Searching bodies is `:FzfKastenSearchContent`.
+-- The `/` is there because fzf matches literally and cannot be taught about
+-- Japanese, so the matching has to happen out here -- which means fzf's own
+-- matching is off (`--disabled`) and ordinary typing needs a fuzzy matcher of
+-- its own. That one is `fzf --filter`, fzf's, so the two modes cost each other
+-- nothing. The token is borrowed from fzf-jp-extension, which patches it into
+-- fzf itself.
+--
+-- Matching against headings and not only paths is what makes any of this worth
+-- doing: measured against 464 real notes, 32 had any Japanese in the filename
+-- while 135 carried it in their headings. Matching paths alone, the filter ran,
+-- narrowed, and found almost nothing -- which reads as "romaji does not work
+-- here" rather than "romaji has nothing to match on here".
 
 local config = require("fzfkasten.config")
 local pickers = require("fzfkasten.pickers")
-local fzf = require("fzf-lua")
+local romaji = require("fzfkasten.romaji")
+local t = pickers._test
 
 local home
 
@@ -22,38 +30,46 @@ local function note(name, lines)
     vim.fn.writefile(lines, full)
 end
 
--- Run the picker and return what it would have shown. `nil` for `list` means
--- the unfiltered branch ran (`fzf.files`), which searches nothing itself.
-local function shown(fn, filter)
-    local seen = {}
-    local files, fzf_exec = fzf.files, fzf.fzf_exec
-    fzf.files = function(opts) seen.opts, seen.list = opts, nil end
-    fzf.fzf_exec = function(list, opts) seen.opts, seen.list = opts, list end
-    pcall(fn, filter)
-    fzf.files, fzf.fzf_exec = files, fzf_exec
-    if seen.list then table.sort(seen.list) end
-    return seen.list, seen.opts
+-- What the picker would show for `query`, sorted so a case can say what it
+-- found without also pinning fzf's ranking.
+local function shown(query)
+    local list = t.notes_for_query(t.note_index(), query)
+    table.sort(list)
+    return list
 end
 
--- `\m` regexes standing in for what a migemo would build, so these cases do not
--- need ttyskk or kensaku installed.
-local KAIGI = [[\m\%(kaigi\|かいぎ\|会議\)]]
-local TANAKA = [[\m\%(tanaka\|たなか\|田中\)]]
+-- Stand in for the migemo, so these cases need neither ttyskk nor kensaku:
+-- romaji in, the `\m` regex a backend would have built out.
+local BACKEND = {
+    name = "stub",
+    available = function() return true end,
+    rg_regex = function() return nil end,
+    regex = function(q)
+        local built = {
+            kaigi = [[\m\%(kaigi\|かいぎ\|会議\)]],
+            tanaka = [[\m\%(tanaka\|たなか\|田中\)]],
+        }
+        return built[q]
+    end,
+}
 
-describe("find_notes: romaji narrowing", function()
+local function setup(opts)
+    config.setup(vim.tbl_deep_extend("force",
+        { home = home, romaji = { backend = BACKEND } }, opts or {}))
+    romaji._test.reset_probe()
+end
+
+describe("the note finder", function()
     before_each(function()
         home = vim.fn.tempname()
         vim.fn.mkdir(home, "p")
-        config.setup({ home = home, romaji = { backend = false } })
 
-        -- Japanese in the name.
         note("会議メモ.md", { "# notes" })
-        -- ASCII name, Japanese heading -- the common case.
         note("1on1 Suzuki.md", { "---", "title: 1on1 Suzuki", "---", "", "# 田中さんと打ち合わせ" })
-        -- Japanese in the body but not in a heading.
         note("plan.md", { "# Plan", "", "田中さんに連絡する" })
-        -- Neither.
+        note("nvim/config/init.lua.md", { "# Config" })
         note("readme.md", { "# Readme" })
+        setup()
     end)
 
     after_each(function()
@@ -63,69 +79,79 @@ describe("find_notes: romaji narrowing", function()
         end
     end)
 
-    it("lists everything through fzf.files when there is no filter", function()
-        local list, opts = shown(pickers.find_notes, nil)
-        assert.is_nil(list)
-        assert.are.equal(home, opts.cwd)
+    it("shows everything before anything is typed", function()
+        assert.are.equal(5, #shown(""))
+        assert.are.equal(5, #shown(nil))
     end)
 
-    it("matches a note by its filename", function()
-        assert.are.same({ "会議メモ.md" }, shown(pickers.find_notes, KAIGI))
+    -- Ordinary typing is fzf's, and has to keep being fzf's: a subsequence
+    -- across path separators is the thing people actually rely on.
+    it("matches a plain query the way fzf does", function()
+        assert.are.same({ "nvim/config/init.lua.md" }, shown("nvmcfg"))
     end)
 
-    -- The case the whole thing exists for: nothing in the path is Japanese, and
-    -- before this the note was unreachable by romaji.
-    it("matches a note by a heading when its filename is ASCII", function()
-        assert.are.same({ "1on1 Suzuki.md" }, shown(pickers.find_notes, TANAKA))
+    it("finds nothing for a plain query that matches nothing", function()
+        assert.are.same({}, shown("zzzzz"))
     end)
 
-    -- ...but not by its body. Otherwise this quietly becomes content search,
-    -- and there would be no picker left that answers "which note is this".
+    it("matches romaji after a slash", function()
+        assert.are.same({ "会議メモ.md" }, shown("/kaigi"))
+    end)
+
+    -- The case the whole thing exists for: nothing in the path is Japanese.
+    it("matches a heading when the filename is ASCII", function()
+        assert.are.same({ "1on1 Suzuki.md" }, shown("/tanaka"))
+    end)
+
+    -- ...but not the body. Otherwise this quietly becomes content search and no
+    -- picker is left answering "which note is this".
     it("does not match body text that is not a heading", function()
-        local list = shown(pickers.find_notes, TANAKA)
-        assert.is_false(vim.tbl_contains(list, "plan.md"), "plan.md matched on its body")
+        assert.is_false(vim.tbl_contains(shown("/tanaka"), "plan.md"))
     end)
 
-    it("leaves out what matches nothing", function()
-        local list = shown(pickers.find_notes, KAIGI)
-        assert.is_false(vim.tbl_contains(list, "readme.md"))
+    -- Without the slash the same letters are just letters, so a note is not
+    -- silently found by a mode you did not ask for.
+    it("does not apply romaji to a plain query", function()
+        assert.are.same({}, shown("kaigi"))
     end)
 
     it("matches paths only when headings are turned off", function()
-        config.setup({ home = home, romaji = { backend = false, headings = false } })
-        assert.are.same({}, shown(pickers.find_notes, TANAKA))
-        assert.are.same({ "会議メモ.md" }, shown(pickers.find_notes, KAIGI))
+        setup({ romaji = { headings = false } })
+        assert.are.same({}, shown("/tanaka"))
+        assert.are.same({ "会議メモ.md" }, shown("/kaigi"))
     end)
 
-    it("says the list is filtered", function()
-        local _, opts = shown(pickers.find_notes, KAIGI)
-        assert.are.equal("Notes (romaji)> ", opts.prompt)
+    -- A bare slash is the start of typing, not a filter that matches nothing.
+    it("shows everything for a bare slash", function()
+        assert.are.equal(5, #shown("/"))
     end)
 
-    -- Entries have to stay bare paths relative to `home`: that is what the
-    -- action resolves and what the builtin previewer reads.
+    -- The backend is installed but cannot answer -- ttyskk missing its
+    -- dictionary, kensaku waiting on denops. Emptying the picker would look
+    -- exactly like a filter that found nothing.
+    it("falls back to plain matching when the backend cannot answer", function()
+        assert.are.same({ "readme.md" }, shown("/readme"))
+    end)
+
     it("lists bare paths, so opening one still works", function()
-        local list = shown(pickers.find_notes, TANAKA)
+        local list = shown("/tanaka")
         assert.are.equal(1, vim.fn.filereadable(home .. "/" .. list[1]))
     end)
 
     it("survives a note it cannot read", function()
         note("locked.md", { "# 田中" })
         vim.fn.setfperm(home .. "/locked.md", "-w-------")
-        local ok, list = pcall(shown, pickers.find_notes, TANAKA)
+        local ok, list = pcall(shown, "/tanaka")
         vim.fn.setfperm(home .. "/locked.md", "rw-r--r--")
         assert.is_true(ok)
         assert.is_truthy(vim.tbl_contains(list, "1on1 Suzuki.md"))
     end)
 end)
 
-describe("insert_link: romaji narrowing", function()
+describe("the note finder's header", function()
     before_each(function()
         home = vim.fn.tempname()
         vim.fn.mkdir(home, "p")
-        config.setup({ home = home, romaji = { backend = false } })
-        note("1on1 Suzuki.md", { "# 田中さんと打ち合わせ" })
-        note("readme.md", { "# Readme" })
     end)
 
     after_each(function()
@@ -135,14 +161,19 @@ describe("insert_link: romaji narrowing", function()
         end
     end)
 
-    -- Inserting a link asks the same question as finding a note, so it has to
-    -- get the same answer; a note you can find and cannot link to is worse than
-    -- one you can do neither with.
-    it("finds the same notes the finder does", function()
-        assert.are.same({ "1on1 Suzuki.md" }, shown(pickers.insert_link, TANAKA))
+    -- A key you have to remember is a key you do not use, so the header says
+    -- what `/` does, with an example rather than a description of one.
+    it("says what the slash does", function()
+        setup()
+        local header = t.find_header()
+        assert.is_truthy(header:find("/", 1, true))
+        assert.is_truthy(header:find("kaigi", 1, true))
+        assert.is_truthy(header:find("会議", 1, true))
     end)
 
-    it("lists everything through fzf.files when there is no filter", function()
-        assert.is_nil(shown(pickers.insert_link, nil))
+    -- ...and does not offer it when nothing can honour it.
+    it("says nothing when there is no romaji backend", function()
+        setup({ romaji = { backend = false } })
+        assert.are.equal("", t.find_header())
     end)
 end)

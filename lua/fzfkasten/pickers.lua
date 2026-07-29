@@ -2,7 +2,7 @@ local fzf = require('fzf-lua')
 local config = require('fzfkasten.config')
 local utils = require('fzfkasten.utils') -- Added for path joining if needed later
 local buffer = require('fzfkasten.buffer') -- Opens notes and applies per-buffer opt-outs
-local romaji = require('fzfkasten.romaji') -- Optional romaji narrowing (<alt-/>)
+local romaji = require('fzfkasten.romaji') -- Optional romaji narrowing (/ prefix, <alt-/>)
 local M = {}
 
 -- Every note file under `home`, as a path relative to `home` -- the same shape
@@ -53,41 +53,108 @@ local function notes_matching(filter)
     return shown
 end
 
-function M.find_notes(filter)
+-- Everything the note finder matches a note against: its path, and its own
+-- headings unless `romaji.headings` says otherwise. Built once when the picker
+-- opens -- about 40ms over 464 notes -- and reused for every keystroke after
+-- that, which is what makes matching on each keystroke affordable at all.
+--- @return { rel: string, text: string }[]
+local function note_index()
+    local scan_headings = (config.options.romaji or {}).headings ~= false
+    local home = config.options.home
+    local index = {}
+    for _, rel in ipairs(note_rel_paths()) do
+        local text = rel
+        if scan_headings then
+            local ok, lines = pcall(vim.fn.readfile, utils.join_path(home, rel))
+            local parts = { rel }
+            for _, line in ipairs(ok and lines or {}) do
+                if line:match("^#+%s+%S") then parts[#parts + 1] = line end
+            end
+            text = table.concat(parts, "\n")
+        end
+        index[#index + 1] = { rel = rel, text = text }
+    end
+    return index
+end
+
+-- fzf's own matcher, run in batch.
+--
+-- A live picker has to turn fzf's matching off (`--disabled`): otherwise fzf
+-- would filter our already-filtered list by the raw query and throw away
+-- everything a romaji query had found. That leaves ordinary typing needing a
+-- fuzzy matcher of its own -- and `fzf --filter` is fzf's, so `nvmcfg` still
+-- finds `nvim/config/init.lua`, ranked the same way, rather than by whatever
+-- approximation of fzf a plugin author writes. About 4ms over 464 entries.
+local function fzf_filter(list, query)
+    local out = vim.fn.systemlist({ "fzf", "--filter", query }, list)
+    -- 1 is "nothing matched"; anything above it is fzf failing, and showing
+    -- everything is a better answer to that than showing nothing.
+    if vim.v.shell_error > 1 then return list end
+    return out
+end
+
+-- A query beginning with this is romaji: `/kaigi` matches 会議.
+--
+-- Taken from fzf-jp-extension, which patches the same token into fzf itself.
+-- Doing it out here keeps stock fzf, and keeps fzf's matcher for every other
+-- query -- the two modes cost nothing to each other.
+local ROMAJI_PREFIX = "/"
+
+-- The notes to show for `query`.
+--
+-- With no romaji backend, or one that cannot answer yet, `/kaigi` matches the
+-- text `kaigi` as it stands rather than showing nothing. A picker that empties
+-- itself looks the same as one whose filter found nothing, and the header only
+-- offers `/` when a backend is there to honour it.
+--- @param index { rel: string, text: string }[]
+--- @param query string|nil
+--- @return string[] paths relative to `home`
+local function notes_for_query(index, query)
+    query = query or ""
+    local romaji_query = query:sub(1, #ROMAJI_PREFIX) == ROMAJI_PREFIX
+        and query:sub(#ROMAJI_PREFIX + 1) or nil
+
+    if romaji_query then
+        local re = romaji.regex(romaji_query)
+        if re then
+            local shown = {}
+            for _, entry in ipairs(index) do
+                if vim.fn.match(entry.text, re) >= 0 then shown[#shown + 1] = entry.rel end
+            end
+            return shown
+        end
+        query = romaji_query
+    end
+
+    local all = {}
+    for _, entry in ipairs(index) do all[#all + 1] = entry.rel end
+    if query == "" then return all end
+    return fzf_filter(all, query)
+end
+
+-- Says the `/` is there, and what it does, in the one place you are looking
+-- when you would need it. A key you have to remember is a key you do not use.
+local function find_header()
+    if not romaji.available() then return "" end
+    return "prefix / for romaji:  /kaigi → 会議"
+end
+
+function M.find_notes()
     local function open(selected)
         if not selected or #selected == 0 then return end
         local entry = fzf.path.entry_to_file(selected[1], { cwd = config.options.home })
         buffer.edit(entry.path)
     end
 
-    -- No filter: the normal `fzf.files` finder, with `<alt-/>` to start one.
-    if not filter then
-        fzf.files(vim.tbl_deep_extend("force", config.options.fzf.files, {
+    local index = note_index()
+    fzf.fzf_live(function(args) return notes_for_query(index, args[1]) end,
+        vim.tbl_deep_extend("force", config.options.fzf, {
             cwd = config.options.home,
             prompt = "Notes> ",
-            fzf_opts = { ["--header"] = romaji.header_hint("") },
-            actions = {
-                ['default'] = open,
-                ['alt-/'] = romaji.action(function(re) M.find_notes(re) end, nil),
-            },
+            previewer = "builtin",
+            fzf_opts = { ["--header"] = find_header() },
+            actions = { ['default'] = open },
         }))
-        return
-    end
-
-    -- Filtered: the romaji backend can't reach into `fzf.files`, so list the
-    -- notes ourselves and keep the matches. The builtin previewer still shows
-    -- each note (paths are relative to `home`).
-    local shown = notes_matching(filter)
-    fzf.fzf_exec(shown, vim.tbl_deep_extend("force", config.options.fzf, {
-        cwd = config.options.home,
-        prompt = romaji.prompt("Notes", filter),
-        previewer = "builtin",
-        fzf_opts = { ["--header"] = romaji.header_hint("") },
-        actions = {
-            ['default'] = open,
-            ['alt-/'] = romaji.action(function(re) M.find_notes(re) end, filter),
-        },
-    }))
 end
 function M.search_tags()
     -- Use a regex that strictly matches #tag
@@ -740,6 +807,9 @@ end
 -- the backlink walk sat inside a picker. Exposed for the tests rather than
 -- widened into the API.
 M._test = {
+    note_index = note_index,
+    notes_for_query = notes_for_query,
+    find_header = find_header,
     link_under_cursor = link_under_cursor,
     get_note_name = get_note_name,
     collect_backlinks = collect_backlinks,
