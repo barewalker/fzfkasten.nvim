@@ -191,9 +191,15 @@ function M.search_content(filter)
 
     -- No filter: the normal live grep (query is the rg pattern), plus `<alt-/>`
     -- to run a romaji search instead.
+    --
+    -- No `cmd` here. Setting it to "rg" replaces the whole command line, not
+    -- just the binary, so fzf-lua's `rg_opts` are dropped -- and with them
+    -- `--smart-case` (so `readme` stopped finding README), `--color=always`,
+    -- `--max-columns=4096`, and the `-e` that keeps a query beginning with `-`
+    -- from being read as a flag. fzf-lua patched `--line-number` and
+    -- `--column` back in and said so, twice, on every open.
     if not filter then
         fzf.live_grep(vim.tbl_deep_extend("force", config.options.fzf, {
-            cmd = "rg",
             cwd = config.options.home,
             prompt = "Grep> ",
             no_ignore = true,
