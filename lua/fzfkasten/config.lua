@@ -27,6 +27,12 @@ M.defaults = {
      -- kensaku.vim runs on denops, so it brings Deno and a 2.1MB dictionary
      -- download with it. Both answer the same question.
      backend = "auto",
+     -- Whether the note finder and link insertion also match a note's own
+     -- headings, not just its path. Collections are often written in Japanese
+     -- but filed under ASCII names, and matching paths alone then looks broken:
+     -- the filter runs, narrows, and finds almost nothing. Set false to match
+     -- paths only. (The body is not searched here -- that is SearchContent.)
+     headings = true,
      ttyskk = {
        cmd = "ttyskk",
        -- Cap on dictionary candidates, passed through as `--limit`. nil leaves
