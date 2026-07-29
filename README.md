@@ -411,6 +411,8 @@ Reaching 会議 from `kaigi` takes a migemo — a converter that reaches the *ka
 
 `romaji.backend` decides. The default `"auto"` tries ttyskk first and falls back to kensaku, so a machine with either just works.
 
+`romaji.headings` decides what the note finder matches. Filenames alone are thin ground: a collection can be written entirely in Japanese and still be filed under ASCII names — of 464 notes measured, 32 had any Japanese in the filename against 135 that carried it in their headings. So `:FzfKastenFindNotes` and `:FzfKastenInsert` match a note's path *and* its headings by default (about 40ms over those 464 notes, only while a filter is active). Set it to `false` for paths only. Bodies are never searched here — that is `:FzfKastenSearchContent`.
+
 ```lua
 romaji = {
   backend = "auto",              -- or "ttyskk" / "kensaku" / false / a table of your own

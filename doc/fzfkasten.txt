@@ -40,10 +40,14 @@ COMMANDS
 - FzfKastenLog: Browse recent daily/weekly notes by date in one picker --
   existing notes preview and open, a date with no note is created from its
   template. <ctrl-x> enters a date manually. (FzfKastenPickDailyDate is an alias.)
-- FzfKastenFindNotes: Search for notes. <alt-/> narrows by romaji (matches
-  note titles); blank input clears it. See ROMAJI below.
+- FzfKastenFindNotes: Search for notes. <alt-/> narrows by romaji, matching a
+  note's path and its own headings -- a collection written in Japanese is
+  often filed under ASCII names, and paths alone then match almost nothing.
+  Set romaji.headings = false for paths only. Blank input clears the filter.
+  See ROMAJI below.
 - FzfKastenTags: Search for tags.
-- FzfKastenInsert: Insert a link to a note. <alt-/> narrows by romaji too.
+- FzfKastenInsert: Insert a link to a note. <alt-/> narrows by romaji too,
+  the same way FzfKastenFindNotes does.
 - FzfKastenSearchContent: Live-grep note bodies. <alt-/> runs a romaji search
   instead (the backend builds an rg pattern), which suits Japanese bodies.
 - FzfKastenTasks: Pick an open `- [ ]` task and jump to it. <ctrl-x> marks it

@@ -19,6 +19,40 @@ local function note_rel_paths()
     return rels
 end
 
+-- Notes the romaji filter matches, by path or by their own headings.
+--
+-- Filenames are thin ground for this on their own. A collection can be written
+-- entirely in Japanese and still be filed under ASCII names -- of the 464 notes
+-- this was measured against, 32 had any Japanese in the filename while 135
+-- carried it in their headings, 1654 headings' worth. Matching paths only, the
+-- filter looked broken: it ran, it narrowed, and it found almost nothing.
+--
+-- Headings rather than the whole body, because that keeps this picker about
+-- finding a *note*. Searching the body is what `:FzfKastenSearchContent` is.
+--
+-- Costs about 40ms across those 464 notes, and only while a filter is active.
+--- @param filter string a `\m` Vim regex, or nil for everything
+--- @return string[] paths relative to `home`
+local function notes_matching(filter)
+    local scan_headings = (config.options.romaji or {}).headings ~= false
+    local home = config.options.home
+    local shown = {}
+    for _, rel in ipairs(note_rel_paths()) do
+        local hit = romaji.matches(rel, filter)
+        if not hit and scan_headings then
+            local ok, lines = pcall(vim.fn.readfile, utils.join_path(home, rel))
+            for _, line in ipairs(ok and lines or {}) do
+                if line:match("^#+%s+%S") and romaji.matches(line, filter) then
+                    hit = true
+                    break
+                end
+            end
+        end
+        if hit then shown[#shown + 1] = rel end
+    end
+    return shown
+end
+
 function M.find_notes(filter)
     local function open(selected)
         if not selected or #selected == 0 then return end
@@ -40,13 +74,10 @@ function M.find_notes(filter)
         return
     end
 
-    -- Filtered: the romaji backend can't reach into `fzf.files`, so list the notes
-    -- ourselves and keep the ones whose path the romaji regex matches. The
-    -- builtin previewer still shows each note (paths are relative to `home`).
-    local shown = {}
-    for _, rel in ipairs(note_rel_paths()) do
-        if romaji.matches(rel, filter) then shown[#shown + 1] = rel end
-    end
+    -- Filtered: the romaji backend can't reach into `fzf.files`, so list the
+    -- notes ourselves and keep the matches. The builtin previewer still shows
+    -- each note (paths are relative to `home`).
+    local shown = notes_matching(filter)
     fzf.fzf_exec(shown, vim.tbl_deep_extend("force", config.options.fzf, {
         cwd = config.options.home,
         prompt = romaji.prompt("Notes", filter),
@@ -161,12 +192,10 @@ function M.insert_link(filter)
         return
     end
 
-    -- Filtered by romaji, like `find_notes`: list notes ourselves and keep the
-    -- matches so a Japanese-titled note is reachable without typing Japanese.
-    local shown = {}
-    for _, rel in ipairs(note_rel_paths()) do
-        if romaji.matches(rel, filter) then shown[#shown + 1] = rel end
-    end
+    -- Filtered by romaji, like `find_notes`, so a note written in Japanese is
+    -- reachable without typing Japanese -- whether the Japanese is in its name
+    -- or only in its headings.
+    local shown = notes_matching(filter)
     fzf.fzf_exec(shown, vim.tbl_deep_extend("force", config.options.fzf, {
         cwd = config.options.home,
         prompt = romaji.prompt("Insert Link", filter),
