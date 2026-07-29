@@ -30,6 +30,12 @@ backend; both flavours are needed, since the pickers filter in Lua with a `\m`
 Vim regex while content search shells out to `rg`, and handing `rg` a Vim
 pattern does not fail -- it matches nothing.
 
+The note finder uses `/` rather than <alt-/>: fzf matches literally and
+cannot be taught Japanese, so the matching happens outside it, which means
+fzf's own matching is off there and plain queries go through `fzf --filter`
+-- fzf's matcher, so ranking is unchanged. The `/` token is borrowed from
+fzf-jp-extension, which patches it into fzf itself.
+
 `ttyskk` takes cmd, limit and timeout under `romaji.ttyskk`.
 `:checkhealth fzfkasten` reports which backend answered.
 
@@ -40,11 +46,12 @@ COMMANDS
 - FzfKastenLog: Browse recent daily/weekly notes by date in one picker --
   existing notes preview and open, a date with no note is created from its
   template. <ctrl-x> enters a date manually. (FzfKastenPickDailyDate is an alias.)
-- FzfKastenFindNotes: Search for notes. <alt-/> narrows by romaji, matching a
-  note's path and its own headings -- a collection written in Japanese is
-  often filed under ASCII names, and paths alone then match almost nothing.
-  Set romaji.headings = false for paths only. Blank input clears the filter.
-  See ROMAJI below.
+- FzfKastenFindNotes: Search for notes. A query beginning with `/` is romaji:
+  `/kaigi` narrows the list to notes matching 会議. Anything else is fzf's own
+  fuzzy matching, unchanged. A note matches on its path and its own headings
+  -- a collection written in Japanese is often filed under ASCII names, and
+  paths alone then match almost nothing; romaji.headings = false for paths
+  only. The header says what `/` does. See ROMAJI below.
 - FzfKastenTags: Search for tags.
 - FzfKastenInsert: Insert a link to a note. <alt-/> narrows by romaji too,
   the same way FzfKastenFindNotes does.
