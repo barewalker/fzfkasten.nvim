@@ -20,7 +20,8 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **Tag Search**: Search for `#tags` across all notes.
 - [x] **Link Insertion**: Interactive link insertion with `[[` trigger.
 - [x] **Follow Link**: Jump to the link under the cursor (or pick from all links in the buffer). Resolves notes recursively across sub-directories, and can create missing notes from a template. Mappable to `gf` with a native-`gf` fallback.
-- [x] **Backlinks**: Find all notes linking to the current note. `[[note]]`, `[[note|alias]]` and `[[note#heading]]` all count as links to `note`; only whole names match, so `[[note-old]]` is not one.
+- [x] **Backlinks**: Find all notes linking to the current note. `[[note]]`, `[[note|alias]]`, `[[note#heading]]`, `[[folder/note]]` and `[[note.md]]` all count as links to `note`; only whole names match, so `[[note-old]]` is not one.
+- [x] **Link graph**: The whole collection read as a graph, in four pickers — what the note you are in is joined to (both directions, several links out), which notes are joined to nothing, which links point at notes that were never written, and which notes everything converges on. See [The link graph](#the-link-graph).
 - [x] **Rename Note**: Rename a note and retarget every link to it — see [Renaming](#renaming-a-note).
 - [x] **Template Engine**: Simple `{{title}}`, `{{date}}`, and `{{hdate}}` placeholders.
 - [x] **External Commands**: Append external data (like `gcalcli`) to daily notes.
@@ -75,6 +76,11 @@ Here is the default configuration. You can override any of these settings in the
       format = "%Y-W%V",
       template = "templates/weekly.md",
     },
+  },
+  -- The collection read as a graph. See "The link graph".
+  graph = {
+    depth = 2,                    -- how far :FzfKastenLinkTree walks
+    ignore_dirs = { "templates" },-- directories that are not notes
   },
   transform = {
     insert_link = function(filename)
@@ -198,6 +204,10 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
     { "gf", "<cmd>FzfKastenGotoLink<CR>", ft = "markdown", desc = "Follow wikilink / gf" }
     ```
 
+*   **`:FzfKastenLinkTree [depth]`**: What the note you are in is joined to, both directions at once, as a tree — its links, the notes linking to it, and theirs. See [The link graph](#the-link-graph).
+
+*   **`:FzfKastenOrphans`** / **`:FzfKastenDeadLinks`** / **`:FzfKastenHubs`**: The same graph read three other ways — notes joined to nothing, links pointing at notes that don't exist, and notes by how much meets there. See [The link graph](#the-link-graph).
+
 *   **`:FzfKastenTasks`**: Lists every open `- [ ]` checkbox across your notes. Pick one to jump to that line in its note; press `<ctrl-x>` to mark it done in the note itself. See [Tasks](#tasks).
 
 *   **`:FzfKastenTaskToggle`**: Toggles the checkbox on the current line between `- [ ]` and `- [x]`, stamping the completion time.
@@ -226,6 +236,96 @@ require("fzfkasten").setup({
   },
 })
 ```
+
+## The link graph
+
+Backlinks answer "what points at this note", one note at a time. Four pickers
+read the same `[[links]]` as one graph and answer what a single note cannot.
+
+Nothing is indexed and nothing is cached: each command walks the collection when
+you run it, which over 466 notes (24k lines) takes about 40ms — the same order as
+the note finder's own index, and less than fzf takes to appear. A cache would
+have to be invalidated by every write, every `git pull` and every edit made on a
+phone, and a graph that is quietly out of date is worse than one that costs 40ms.
+
+### `:FzfKastenLinkTree` — what this note is joined to
+
+The note you are in, and everything within `graph.depth` links of it, in either
+direction:
+
+```
+● project-alpha
+├─ → rig notes
+│  └─ ← 2025-W41
+├─ ↔ 2025-W34
+├─ ← 1on1
+└─ → measurement rework  (no note)
+```
+
+`→` is a link this note writes, `←` one written at it, `↔` both. A note appears
+once, at the shortest way to reach it, so a cycle is walked once and closes.
+
+`<enter>` opens it — a note you link **to** at its top, a note linking **back**
+at the line the link is written on, which is the sentence that made the
+connection rather than the top of whatever note it sits in. `(no note)` marks a
+link no note answers to; there is nothing to open, so it takes you to the line
+naming it.
+
+Give it a depth for one call: `:FzfKastenLinkTree 3`. Past 3 the tree is taller
+than the window and stops being a shape you can take in.
+
+Run with no note to start from — from a dashboard, a scratch buffer, or a file
+outside the collection — it asks which note first. The graph is a thing you
+browse, and "open a note, then ask what it is joined to" is a step that answers
+nothing.
+
+### `:FzfKastenOrphans` — notes joined to nothing
+
+Notes with no link in and none out. In a Zettelkasten this is the working list:
+these are the notes the collection has not connected to anything yet. A note
+whose only link is broken is *not* an orphan — it reached out, and the link it
+got wrong is the next picker's business.
+
+### `:FzfKastenDeadLinks` — links pointing at nothing
+
+Every `[[link]]` no note answers to: a note you meant to write, or a name that
+drifted. `<enter>` opens the line the link is written on — with
+[`follow_link.create_nonexisting`](#following-links-to-non-existing-notes) set,
+`gf` there writes the note from your template.
+
+A link is resolved the way `:FzfKastenFollowLink` resolves it, so
+`[[folder/note]]` and `[[note.md]]` are links to `note` and do not land here.
+What is left is what is genuinely missing.
+
+### `:FzfKastenHubs` — where the collection meets
+
+Every connected note by how many links meet there, most first, backlinks in the
+left column and links out in the right. Ties go to the note that is linked
+*to*: being linked to is what makes a note a place others meet, while linking
+out is something a note does on its own.
+
+```
+ 26 ←    6 →   project-alpha
+  9 ←    0 →   1on1
+  0 ←    8 →   project-alpha-experiment
+```
+
+### What counts as a link here
+
+The same `[[link]]` the rest of the plugin reads — `[[note|alias]]`,
+`[[note#heading]]`, `[[folder/note]]` and `[[note.md]]` included — with two
+rules of the graph's own:
+
+- **A note is its name, not its path.** Two notes filed under the same name in
+  different directories are one node, as they are one target to a link.
+- **Fenced code blocks are not read.** `[[` is a link in prose and a pair of
+  brackets in a shell: read as prose, `if [[ ! -f ~/.config/x ]]; then` is a
+  link to a note called `! -f ~/.config/x`. In a collection that keeps command
+  lines in it, that is what the dead-link list fills up with.
+
+`graph.ignore_dirs` leaves whole directories out. It defaults to `templates`,
+which are not notes: their `[[{{title}}]]` placeholders would be dead links, and
+the templates themselves would sit in the orphan list forever.
 
 ## Tasks
 
@@ -822,7 +922,7 @@ module it was testing, so it passed for any value that module held.
 ## Renaming a note
 
 `:FzfKastenRenameNote` moves the note and retargets every link to it across the
-collection. All four link shapes come through:
+collection. Every shape a link to it can take comes through:
 
 | Before | After |
 |---|---|
@@ -830,11 +930,15 @@ collection. All four link shapes come through:
 | `[[old\|alias]]` | `[[new\|alias]]` |
 | `[[old#heading]]` | `[[new#heading]]` |
 | `[[old#heading\|alias]]` | `[[new#heading\|alias]]` |
+| `[[old.md]]` | `[[new]]` |
+| `[[folder/old]]` | `[[new]]` |
 
 The anchor and the alias are carried across untouched: renaming a note moves
-neither the headings inside it nor the words you chose to call it by. Only whole
-names match, so `[[old-notes]]` is not a link to `old`, and `[[#top]]` — an
-anchor within the same note, with no name — belongs to nobody.
+neither the headings inside it nor the words you chose to call it by. The
+directory and the extension are not, because the new name is where the note is
+now and the path the link used to take is no longer true. Only whole names
+match, so `[[old-notes]]` is not a link to `old`, and `[[#top]]` — an anchor
+within the same note, with no name — belongs to nobody.
 
 **Following an anchored link puts the cursor on that heading.** `[[note#Results]]`
 opens the note at its `## Results`, matched on the heading's own text rather

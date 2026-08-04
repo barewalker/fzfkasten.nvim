@@ -156,6 +156,21 @@ describe("collect_backlinks", function()
     end)
 
     -- ...and does not become a substring search on the way.
+    -- Written as a path, a link names the same note. The backlink list had not
+    -- learned that, so a note linked to as `[[lognote/2025-W34]]` showed no
+    -- sign of it -- which reads as "nothing links here".
+    it("finds a link that names the directory", function()
+        local target = note("daily/note.md", { "# 本体" })
+        note("from.md", { "see [[daily/note]]" })
+        assert.are.same({ "from.md" }, sources(target))
+    end)
+
+    it("finds a link that carries the note extension", function()
+        local target = note("note.md", { "# 本体" })
+        note("from.md", { "see [[note.md]]" })
+        assert.are.same({ "from.md" }, sources(target))
+    end)
+
     it("does not match a note whose name merely starts the same", function()
         local target = note("note.md", { "# 本体" })
         note("from.md", { "see [[note-old]] and [[notebook]] and [[my note]]" })
@@ -283,5 +298,11 @@ describe("get_note_name", function()
         assert.is_nil(t.get_note_name(nil))
         assert.is_nil(t.get_note_name(42))
         assert.is_nil(t.get_note_name("v:null"))
+    end)
+
+    -- What `nvim_buf_get_name` gives for a scratch buffer. Read as a name it is
+    -- the empty one, which every empty link "[[]]" points at.
+    it("refuses the empty path", function()
+        assert.is_nil(t.get_note_name(""))
     end)
 end)

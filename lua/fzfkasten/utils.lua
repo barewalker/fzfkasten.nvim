@@ -29,19 +29,27 @@ function M.days_from(now, days)
     return os.time(t)
 end
 
---- Split the inside of a wikilink into its parts: `[[name#anchor|alias]]`, of
---- which the last two are optional.
+--- Split the inside of a wikilink into its parts: `[[dir/name.md#anchor|alias]]`,
+--- of which all but the name are optional.
 ---
 --- `|` is taken first, so an alias may itself contain a `#` (`[[note|see #3]]`);
 --- the anchor is then everything after the first `#` of what is left, so a
 --- heading containing one (`[[note#Q#A]]`) survives the round trip.
+---
+--- A note is named by its name, wherever it is filed and whatever the file is
+--- called on disk, so a directory and the note extension are read off it and
+--- handed back separately: `[[lognote/2025-W34]]` and `[[2025-W34.md]]` are both
+--- links to `2025-W34`. Written those ways they used to be links to nothing --
+--- unfollowable, invisible to the backlink list, and left behind by a rename
+--- that reported success. Only the *configured* extension comes off, so a note
+--- called `note.v2` keeps its own dot.
 ---
 --- Lives here rather than in core or pickers because both need it and they
 --- require each other: following a link and renaming one have to agree on what
 --- a link means, or an anchor you can write is an anchor that only one of them
 --- honours.
 --- @param content string the text between the brackets
---- @return string name, string|nil anchor, string|nil alias
+--- @return string name, string|nil anchor, string|nil alias, string|nil dir
 function M.split_link(content)
     local body, alias = content:match("^(.-)|(.*)$")
     if not body then
@@ -51,7 +59,48 @@ function M.split_link(content)
     if not name then
         name = body
     end
-    return name, anchor, alias
+
+    local dir, basename = name:match("^(.*)/([^/]*)$")
+    if dir then
+        name = basename
+    end
+
+    local ext = config.options.extension
+    if ext and ext ~= "" then
+        name = name:gsub("%." .. vim.pesc(ext) .. "$", "")
+    end
+
+    return name, anchor, alias, dir
+end
+
+--- The name a `[[link]]` would call the note at `filepath`: its filename with
+--- the extension taken off.
+---
+--- Lives here for the same reason `split_link` does -- the backlink walk, the
+--- link graph and the rename all have to agree on what names a note, and they
+--- cannot require each other. A leading dot is not an extension separator, so
+--- `.bashrc` keeps its name rather than becoming the empty string, which every
+--- empty link `[[]]` in the collection would otherwise be a link to.
+--- @param filepath string
+--- @return string|nil name, nil when the path is not one
+function M.note_name(filepath)
+    -- An unnamed buffer is "", which names no note. Read as one it is the empty
+    -- name, which every empty link `[[]]` points at -- and the caller is told it
+    -- has a note when what it has is a scratch buffer.
+    if not filepath or type(filepath) ~= "string" or filepath == "" or filepath == "v:null" then
+        return nil
+    end
+
+    local filename_with_ext = vim.fn.fnamemodify(filepath, ":t")
+    if not filename_with_ext or type(filename_with_ext) ~= "string" or filename_with_ext == "v:null" then
+        return nil
+    end
+
+    local basename = filename_with_ext:match("^(.*)%.[^%.]*$")
+    if basename and basename ~= "" then
+        return basename
+    end
+    return filename_with_ext -- No extension, return as is (e.g. "my_note", ".bashrc")
 end
 
 function M.get_template_path(template_name)

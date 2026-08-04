@@ -84,6 +84,81 @@ describe("split_link", function()
     it("reads an anchor with no name as a link within the same note", function()
         assert.are.same({ "", "top", nil }, { utils.split_link("#top") })
     end)
+
+    -- A note is named by its name, wherever it is filed and whatever the file
+    -- is called on disk. Written these ways -- both of them Obsidian's, and
+    -- both of them in collections written there -- a link used to name nothing:
+    -- unfollowable, invisible to the backlink list, and left behind by a rename
+    -- that reported success.
+    describe("a target written as a path", function()
+        it("hands back the name, and the directory separately", function()
+            assert.are.same({ "2025-W34", nil, nil, "lognote" },
+                { utils.split_link("lognote/2025-W34") })
+        end)
+
+        it("takes the note extension off", function()
+            assert.are.same({ "note", nil, nil }, { utils.split_link("note.md") })
+        end)
+
+        it("takes both off, anchor and alias intact", function()
+            assert.are.same({ "note", "見出し", "呼び名", "sub/deep" },
+                { utils.split_link("sub/deep/note.md#見出し|呼び名") })
+        end)
+
+        -- Only the configured extension comes off, so a note called `note.v2`
+        -- keeps its own dot -- `get_note_name` reads the file the same way.
+        it("leaves a dot that is not the note extension alone", function()
+            assert.are.same({ "note.v2", nil, nil }, { utils.split_link("note.v2") })
+            assert.are.same({ "note.v2", nil, nil }, { utils.split_link("note.v2.md") })
+        end)
+
+        it("names nothing when the path has no name on the end", function()
+            assert.are.same({ "", nil, nil, "lognote" }, { utils.split_link("lognote/") })
+        end)
+    end)
+end)
+
+describe("follow_link: a target written as a path", function()
+    after_each(cleanup)
+    before_each(setup)
+
+    it("follows a link that names the directory", function()
+        note("lognote/2025-W34.md", { "# 第34週" })
+        note("from.md", { "先週は [[lognote/2025-W34]] に書いた" })
+        vim.cmd("edit " .. home .. "/from.md")
+        follow(1)
+        assert.are.equal("2025-W34.md", opened())
+    end)
+
+    it("follows a link that carries the note extension", function()
+        note("note.md", { "# 本体" })
+        note("from.md", { "see [[note.md]]" })
+        vim.cmd("edit " .. home .. "/from.md")
+        follow(1)
+        assert.are.equal("note.md", opened())
+    end)
+
+    -- The directory earns its keep here: two notes share a name, and the link
+    -- said which one it meant.
+    it("picks the note in the directory the link named", function()
+        note("lognote/2025-W34.md", { "# ログ" })
+        note("archive/2025-W34.md", { "# 保管" })
+        note("from.md", { "[[lognote/2025-W34]]" })
+        vim.cmd("edit " .. home .. "/from.md")
+        follow(1)
+        assert.are.equal("2025-W34.md", opened())
+        assert.are.equal("# ログ", vim.api.nvim_buf_get_lines(0, 0, 1, false)[1])
+    end)
+
+    -- ...and does not refuse the note when it has since moved: the link is
+    -- still about that note, and the directory is only how it was reached.
+    it("still finds the note when it is no longer where the link says", function()
+        note("moved/2025-W34.md", { "# 移動後" })
+        note("from.md", { "[[lognote/2025-W34]]" })
+        vim.cmd("edit " .. home .. "/from.md")
+        follow(1)
+        assert.are.equal("2025-W34.md", opened())
+    end)
 end)
 
 describe("follow_link: anchors", function()
