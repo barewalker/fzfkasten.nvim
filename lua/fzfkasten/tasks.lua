@@ -1044,8 +1044,9 @@ local function cancel_refusal(why, here)
     return "[Fzfkasten] No checkbox on " .. (here and "this" or "that") .. " line."
 end
 
--- Why `due_line` refused, in words.
-local function due_refusal(why)
+-- Why `due_line` refused, in words. Shared so the buffer and the file paths
+-- say the same thing.
+local function due_refusal(why, here)
     if why == "not open" then
         return "[Fzfkasten] That task isn't open; a due date is for something "
             .. "still to do."
@@ -1053,7 +1054,7 @@ local function due_refusal(why)
         return "[Fzfkasten] Expected a date like 2026-07-25 or 2026-07-25T15:00, "
             .. "or a relative one like tomorrow, +3d or fri."
     end
-    return "[Fzfkasten] No checkbox on this line."
+    return "[Fzfkasten] No checkbox on " .. (here and "this" or "that") .. " line."
 end
 
 --- Set, replace or clear the due date on the task on the current line. With no
@@ -1075,13 +1076,13 @@ function M.set_due(date)
     if spec ~= "" then
         resolved = resolve_due(spec)
         if not resolved then
-            vim.notify(due_refusal("bad date"), vim.log.levels.WARN)
+            vim.notify(due_refusal("bad date", true), vim.log.levels.WARN)
             return
         end
     end
     local out, why = due_line(cur, resolved)
     if not out then
-        vim.notify(due_refusal(why), vim.log.levels.WARN)
+        vim.notify(due_refusal(why, true), vim.log.levels.WARN)
         return
     end
     if out == cur then
@@ -1094,6 +1095,72 @@ function M.set_due(date)
         return
     end
     vim.api.nvim_buf_set_lines(0, lineno - 1, lineno, false, { out })
+end
+
+--- Set, replace or clear the due date on a task in a note on disk, by path and
+--- line. The list's counterpart to `M.set_due`, taking the same date forms.
+---
+--- Writes the file rather than the current buffer, so it works from a view of
+--- the tasks -- the list buffer, where the task is a row and not the line you
+--- are on, and the buffer itself is never the ledger. Refuses to touch a file
+--- whose buffer has unsaved changes, and is undone by `M.undo` rather than by
+--- Vim's `u`, like the other `_at` writers.
+--- @param path string absolute path to the note
+--- @param lineno number 1-indexed line holding the checkbox
+--- @param date string|nil the new due date, or nil/"" to clear
+--- @return boolean true when the line was rewritten
+function M.due_at(path, lineno, date)
+    if type(lineno) ~= "number" or lineno < 1 or vim.fn.filereadable(path) == 0 then
+        return false
+    end
+
+    local bufnr = vim.fn.bufnr(path)
+    if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) and vim.bo[bufnr].modified then
+        vim.notify("[Fzfkasten] Buffer has unsaved changes: " .. path, vim.log.levels.WARN)
+        return false
+    end
+
+    -- Resolve a relative spec before reading the note, so a typo costs nothing.
+    local spec = date and vim.trim(date) or ""
+    local resolved = date
+    if spec ~= "" then
+        resolved = resolve_due(spec)
+        if not resolved then
+            vim.notify(due_refusal("bad date"), vim.log.levels.WARN)
+            return false
+        end
+    end
+
+    local ok, lines = pcall(vim.fn.readfile, path)
+    if not ok or not lines[lineno] then
+        return false
+    end
+
+    local line = lines[lineno]
+    local out, why = due_line(line, resolved)
+    if not out then
+        vim.notify(due_refusal(why), vim.log.levels.WARN)
+        return false
+    end
+    if out == line then
+        vim.notify(
+            spec == ""
+                and "[Fzfkasten] No due date to clear."
+                or "[Fzfkasten] Due date unchanged.",
+            vim.log.levels.INFO
+        )
+        return false
+    end
+
+    lines[lineno] = out
+    vim.fn.writefile(lines, path)
+    remember(path, lineno, line, out)
+    if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
+        vim.schedule(function()
+            pcall(vim.cmd, "checktime " .. bufnr)
+        end)
+    end
+    return true
 end
 
 --- Cancel the task on the current line, or reopen it if already cancelled.

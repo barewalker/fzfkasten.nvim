@@ -244,6 +244,8 @@ Priority `(A)` and a due date are optional; tasks sort by priority, then by due 
 
 A due date is `due:YYYY-MM-DD`, or `due:YYYY-MM-DDTHH:MM` when a time matters — ISO 8601, no space, so it stays one token you can drop anywhere in the line. Type it by hand, or let `:FzfKastenTaskDue` write it for you: `:FzfKastenTaskDue 2026-07-25` sets (or replaces) the due date on the current task, `:FzfKastenTaskDue 2026-07-25T15:00` adds a time, and `:FzfKastenTaskDue` with no argument clears it. It also takes a relative spec and works out the day: `tomorrow` (or `明日`), `+3d`, `2w`, a weekday name (`fri`, `金`, resolved to the nearest such day at or after today). What lands in the note is always the absolute date, though — the note is the ledger, and a bare `due:2026-07-25` reads the same in every editor and on your phone. The `<alt-a>` capture asks for a due the same way.
 
+**It works from the task list too**, on the row under the cursor: there the command writes the note the row came from rather than the line you are on, redraws the list, and is put back by `u` — the list's undo, like every other action there. The date is an argument, so there is no key for it to take: `:FzfKastenTaskDue fri` reads the same from a row as it does from the note.
+
 | Key | Action |
 |---|---|
 | `<enter>` | Open the note at the task's line |
@@ -290,6 +292,8 @@ Tasks — 14   ·   priority
 | `<c-e>` / `<c-y>` | Scroll the preview a line |
 
 Everything else is Vim's, untouched: `j`, `k`, `gg`, `G`, `/`, `n`, `{`, `}`, `<c-d>`, `<c-u>`. No modifier is needed for anything, which is the point — `x`, `c`, `a`, `u` read as delete, change, append, undo, so there is almost nothing to learn.
+
+Due dates have no key here because they need a date: `:FzfKastenTaskDue fri` sets one on the row under the cursor, writing the note that row came from, and `u` puts it back like any other action.
 
 **It is a listed buffer**, so a bufferline shows it as a tab and you switch back to it the way you switch to any open file — `<s-h>`/`<s-l>`, `:b`, `<c-^>`. That matters more than it sounds: a list you glance at all day should not need a keystroke to summon each time. Switching back re-scans the notes and puts the preview back, so what you return to is the current state, not the state you left. Set `list.listed = false` to keep it out of the buffer list.
 
