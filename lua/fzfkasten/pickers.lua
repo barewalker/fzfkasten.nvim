@@ -325,27 +325,10 @@ function M.search_content(filter)
     }))
 end
 
--- Helper to extract the note name from a full path (e.g., "path/to/my_note.md" -> "my_note")
-local function get_note_name(filepath)
-    if not filepath or type(filepath) ~= "string" or filepath == "v:null" then
-        return nil -- Return nil if input path is invalid
-    end
-
-    local filename_with_ext = vim.fn.fnamemodify(filepath, ":t")
-    if not filename_with_ext or type(filename_with_ext) ~= "string" or filename_with_ext == "v:null" then
-        return nil -- Return nil if fnamemodify returns invalid filename
-    end
-
-    -- A leading dot is not an extension separator, so ".bashrc" keeps its name
-    -- rather than becoming the empty string -- which would otherwise be a note
-    -- name that every empty link "[[]]" in the collection matches.
-    local basename = filename_with_ext:match("^(.*)%.[^%.]*$")
-    if basename and basename ~= "" then
-        return basename
-    else
-        return filename_with_ext -- No extension, return as is (e.g., "my_note", ".bashrc")
-    end
-end
+-- The note name a path stands for ("path/to/my_note.md" -> "my_note"). Moved to
+-- utils once the link graph needed the same answer; kept under this name here
+-- because the backlink walk below reads better for it.
+local get_note_name = utils.note_name
 
 -- Every line in the collection that links to `filepath`, as "rel:lineno: text"
 -- with `rel` relative to `home`.
@@ -477,7 +460,13 @@ end
 
 -- Find note files whose name matches `name` anywhere under `home` (recursive),
 -- so links to notes in subdirectories (e.g. dailies) resolve too.
-local function resolve_note_files(name)
+--
+-- `dir` is the directory a link named, if it named one (`[[lognote/2025-W34]]`).
+-- It only ever picks between notes that share a name, and only when it picks
+-- something: a note that has since moved elsewhere is still the note that link
+-- meant, and refusing to open it because it is no longer where the link says
+-- would be worse than opening it.
+local function resolve_note_files(name, dir)
     local pattern = utils.join_path(config.options.home, "**/*." .. config.options.extension)
     local files = vim.fn.glob(pattern, true, true) or {}
     local matches = {}
@@ -486,6 +475,20 @@ local function resolve_note_files(name)
             table.insert(matches, f)
         end
     end
+
+    if dir and dir ~= "" and #matches > 1 then
+        local in_dir = {}
+        for _, f in ipairs(matches) do
+            local parent = vim.fn.fnamemodify(f, ":h")
+            if parent == dir or parent:sub(-(#dir + 1)) == "/" .. dir then
+                table.insert(in_dir, f)
+            end
+        end
+        if #in_dir > 0 then
+            return in_dir
+        end
+    end
+
     return matches
 end
 
@@ -539,12 +542,13 @@ end
 -- name is "note#heading", which matches no file -- so with
 -- `follow_link.create_nonexisting` set, following your own anchored link would
 -- open a *new* note called `note#heading`, template and all, and one `:w` would
--- make it real.
+-- make it real. The directory and the extension come off for the same reason,
+-- and the directory is kept to choose between notes that share a name.
 local function open_link_target(raw_target)
-    local name, anchor = utils.split_link(raw_target)
+    local name, anchor, _, dir = utils.split_link(raw_target)
     if not name or name == "" then return end
 
-    local matches = resolve_note_files(name)
+    local matches = resolve_note_files(name, dir)
     if #matches == 1 then
         buffer.edit(matches[1])
         jump_to_anchor(anchor)

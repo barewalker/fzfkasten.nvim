@@ -13,6 +13,13 @@ M.follow_link = function() require('fzfkasten.pickers').follow_link() end
 M.goto_link = function() require('fzfkasten.pickers').goto_link() end
 M.show_backlinks = function() require('fzfkasten.pickers').show_backlinks(vim.api.nvim_buf_get_name(0)) end
 M.rename_note = function() require('fzfkasten.core').rename_note_interactively() end
+M.link_tree = function(depth)
+    require('fzfkasten.graph').link_tree(vim.api.nvim_buf_get_name(0), depth)
+end
+M.orphans = function() require('fzfkasten.graph').orphans_picker() end
+M.dead_links = function() require('fzfkasten.graph').dead_links_picker() end
+M.hubs = function() require('fzfkasten.graph').hubs_picker() end
+M.link_graph = function() return require('fzfkasten.graph').build() end
 M.find_daily_notes = function() require('fzfkasten.pickers').find_daily_notes_picker() end
 M.log = function() require('fzfkasten.pickers').log() end
 -- Kept as an alias: the date picker grew to cover weeks and previews and became

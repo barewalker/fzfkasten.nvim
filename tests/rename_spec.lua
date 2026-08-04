@@ -120,6 +120,38 @@ describe("rename_note: rewriting links", function()
         core.rename_note(path("old.md"), "new")
         assert.are.equal("down here: [[new]]", read("sub/deep.md")[1])
     end)
+
+    -- These were left behind, and the rename said "1 note updated" while it
+    -- happened. A link written with a directory or the note extension names the
+    -- same note as a bare one, so a rename has to carry it too -- otherwise
+    -- every rename quietly leaves a link pointing at a name that is gone. The
+    -- new name replaces the whole target: it says where the note is now, and
+    -- the path the link used to take is no longer true.
+    describe("a link written as a path", function()
+        it("retargets one that carries the note extension", function()
+            note("dotted.md", { "see [[old.md]]" })
+            core.rename_note(path("old.md"), "new")
+            assert.are.equal("see [[new]]", read("dotted.md")[1])
+        end)
+
+        it("retargets one that names the directory", function()
+            note("pathed.md", { "see [[sub/old]]" })
+            core.rename_note(path("old.md"), "new")
+            assert.are.equal("see [[new]]", read("pathed.md")[1])
+        end)
+
+        it("retargets one that does both, keeping anchor and alias", function()
+            note("both.md", { "see [[sub/old.md#見出し|別名]]" })
+            core.rename_note(path("old.md"), "new")
+            assert.are.equal("see [[new#見出し|別名]]", read("both.md")[1])
+        end)
+
+        it("still leaves a link to another note alone", function()
+            note("other_pathed.md", { "see [[sub/other.md]] and [[old-notes.md]]" })
+            core.rename_note(path("old.md"), "new")
+            assert.are.equal("see [[sub/other.md]] and [[old-notes.md]]", read("other_pathed.md")[1])
+        end)
+    end)
 end)
 
 describe("retarget", function()

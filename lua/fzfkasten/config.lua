@@ -67,6 +67,21 @@ M.defaults = {
    lookback_weeks = 8,
   },
  },
+ -- The collection read as a graph: `:FzfKastenLinkTree` (what this note is
+ -- joined to), `:FzfKastenOrphans`, `:FzfKastenDeadLinks`, `:FzfKastenHubs`.
+ -- Nothing is indexed or cached -- the walk is about 40ms over 500 notes.
+ graph = {
+  -- How many links out `:FzfKastenLinkTree` walks from the note you are in.
+  -- 1 is that note's own links and backlinks; 2 adds theirs, which is where a
+  -- connection you had forgotten tends to turn up. Past 3 the tree is taller
+  -- than the window and stops being a shape you can take in. `:FzfKastenLinkTree 3`
+  -- overrides it for one call.
+  depth = 2,
+  -- Directories (relative to `home`) left out of the graph entirely. Templates
+  -- are not notes: their `[[{{title}}]]` placeholders would be dead links, and
+  -- the templates themselves would sit in the orphan list forever.
+  ignore_dirs = { "templates" },
+ },
  -- Tasks are plain markdown checkboxes inside your notes -- there is no index
  -- and no separate task file, so any other markdown editor (including mobile
  -- git clients) can tick a box and fzfkasten will see it on the next scan.

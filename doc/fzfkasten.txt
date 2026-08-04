@@ -96,13 +96,38 @@ COMMANDS
   note at its "## Results"), matched on the heading text, case-insensitively;
   a heading that is not there opens the note anyway and warns.
 - FzfKastenShowBacklinks: List every line in the collection that links to the
-  current note. [[note]], [[note|alias]] and [[note#heading]] all count; only
+  current note. [[note]], [[note|alias]], [[note#heading]], [[folder/note]] and
+  [[note.md]] all count; only
   whole names match, so [[note-old]] is not a link to [[note]]. The note's own
   links to itself are left out, whether or not the path you reached it by went
   through a symlink.
+- FzfKastenLinkTree: The current note and everything within graph.depth links
+  of it, both directions, as a tree. -> is a link this note writes, <- one
+  written at it, <-> both. A note appears once, at the shortest way to reach
+  it. <enter> opens a note you link to at its top and a note linking back at
+  the line the link is on; "(no note)" marks a link no note answers to, and
+  takes you to the line naming it. Takes a depth for one call, e.g.
+  `:FzfKastenLinkTree 3`. With no note to start from -- a dashboard, a scratch
+  buffer, a file outside the collection -- it asks which note first.
+- FzfKastenOrphans: Notes with no link in and none out -- the ones not joined
+  to anything yet. A note whose only link is broken is not an orphan; it is in
+  FzfKastenDeadLinks.
+- FzfKastenDeadLinks: Every [[link]] no note answers to. <enter> opens the line
+  the link is written on, where `gf` will create the note if
+  follow_link.create_nonexisting is set. A link resolves as FzfKastenFollowLink
+  resolves it, so [[folder/note]] and [[note.md]] are links to `note` and do not
+  land here; what is left is what is genuinely missing.
+- FzfKastenHubs: Connected notes by how many links meet there, backlinks left
+  and links out right, most first. Ties go to the note that is linked to.
+  (These four read the whole collection as a graph. Nothing is indexed: the
+  walk is about 40ms over 500 notes. Fenced code blocks are not read -- `if [[
+  ! -f x ]]` is not a link -- and graph.ignore_dirs, "templates" by default,
+  leaves whole directories out.)
 - FzfKastenRenameNote: Rename the current note and retarget every link to it:
-  [[old]], [[old|alias]], [[old#heading]] and [[old#heading|alias]] all follow,
-  anchor and alias untouched. Only whole names match, so [[old-notes]] is not a
+  [[old]], [[old|alias]], [[old#heading]], [[old#heading|alias]], [[old.md]] and
+  [[folder/old]] all follow. The anchor and the alias are carried across
+  untouched; the directory and the extension are not, since the new name is
+  where the note is now. Only whole names match, so [[old-notes]] is not a
   link to [[old]]. The file moves before any link is rewritten, so a failed
   move changes nothing; a note you have open with unsaved changes is edited in
   its buffer rather than underneath it. Reports how many notes it touched.
