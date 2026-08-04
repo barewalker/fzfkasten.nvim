@@ -36,7 +36,16 @@ end
 M.task_inbox = function() require('fzfkasten.tasks').inbox() end
 M.task_tag = function(opts) require('fzfkasten.tasks').tag(opts) end
 M.task_cancel = function() require('fzfkasten.tasks').cancel() end
-M.task_due = function(date) require('fzfkasten.tasks').set_due(date) end
+-- The list buffer answers for its own rows: there the task is a row, not the
+-- line the cursor is on, and the buffer is a view that cannot be written into.
+-- Asking here rather than in `tasks` keeps the writers unaware of the views.
+M.task_due = function(date)
+    local list = require('fzfkasten.tasklist')
+    if list.is_current() then
+        return list.set_due(date)
+    end
+    require('fzfkasten.tasks').set_due(date)
+end
 M.task_undo = function() return require('fzfkasten.tasks').undo() end
 M.task_list = function() require('fzfkasten.tasklist').open() end
 M.task_list_inbox = function() require('fzfkasten.tasklist').inbox() end

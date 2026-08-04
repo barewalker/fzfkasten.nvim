@@ -536,3 +536,95 @@ describe("tasklist: preview", function()
         assert.is_true(vim.api.nvim_win_is_valid(tasklist._test.preview().win))
     end)
 end)
+
+-- `:FzfKastenTaskDue` is the one editor that is reached from the list without
+-- being one of its keys: the date is an argument, so it is typed on the command
+-- line wherever you happen to be. On a row that has to mean "the task this row
+-- came from", not "this line of the buffer" -- the list is a view, and writing
+-- into it would edit nothing.
+describe("tasklist: due dates from a row", function()
+    after_each(cleanup)
+
+    local function task_due(date)
+        require("fzfkasten").task_due(date)
+    end
+
+    before_each(function()
+        setup()
+        note("n.md", { "- [ ] alpha #todo", "- [ ] beta #todo due:2026-08-01" })
+        tasklist.open()
+    end)
+
+    it("writes the due into the note the row came from", function()
+        goto_row("alpha")
+        task_due("2026-08-10")
+        assert.are.equal("- [ ] alpha #todo due:2026-08-10", read("n.md")[1])
+    end)
+
+    it("replaces a due that is already there", function()
+        goto_row("beta")
+        task_due("2026-09-30")
+        assert.are.equal("- [ ] beta #todo due:2026-09-30", read("n.md")[2])
+    end)
+
+    it("clears it with no argument", function()
+        goto_row("beta")
+        task_due("")
+        assert.are.equal("- [ ] beta #todo", read("n.md")[2])
+    end)
+
+    it("resolves a relative date to a concrete day", function()
+        goto_row("alpha")
+        task_due("tomorrow")
+        assert.are.equal("- [ ] alpha #todo due:" .. os.date("%Y-%m-%d", os.time() + 86400),
+            read("n.md")[1])
+    end)
+
+    it("leaves the note alone when the date is nonsense", function()
+        goto_row("alpha")
+        task_due("someday")
+        assert.are.equal("- [ ] alpha #todo", read("n.md")[1])
+    end)
+
+    it("redraws the list, so the row shows the new due", function()
+        goto_row("alpha")
+        task_due("2026-08-10")
+        assert.is_truthy(lines()[goto_row("alpha")]:find("2026-08-10", 1, true))
+    end)
+
+    it("u puts it back, like the other actions", function()
+        goto_row("alpha")
+        task_due("2026-08-10")
+        press("u")
+        assert.are.equal("- [ ] alpha #todo", read("n.md")[1])
+    end)
+
+    it("does nothing on the heading row", function()
+        vim.api.nvim_win_set_cursor(0, { 1, 0 })
+        task_due("2026-08-10")
+        assert.are.equal("- [ ] alpha #todo", read("n.md")[1])
+        assert.are.equal("- [ ] beta #todo due:2026-08-01", read("n.md")[2])
+    end)
+
+    -- Reached from inside the preview, the row under the list's cursor is still
+    -- what is meant: the preview is showing that task's note, and `p` is for
+    -- reading it with Vim's keys rather than for leaving the list.
+    it("edits the row's task from inside the preview", function()
+        goto_row("alpha")
+        press("p")
+        task_due("2026-08-10")
+        assert.are.equal("- [ ] alpha #todo due:2026-08-10", read("n.md")[1])
+    end)
+
+    -- And with the list shut, the same key goes back to editing the note you
+    -- are writing in, undone by Vim's `u`.
+    it("edits the buffer again once the list is closed", function()
+        press("q")
+        vim.cmd("edit " .. home .. "/n.md")
+        vim.api.nvim_win_set_cursor(0, { 1, 0 })
+        task_due("2026-08-10")
+        assert.are.equal("- [ ] alpha #todo due:2026-08-10",
+            vim.api.nvim_buf_get_lines(0, 0, 1, false)[1])
+        assert.is_true(vim.bo.modified)
+    end)
+end)

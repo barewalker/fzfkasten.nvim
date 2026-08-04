@@ -336,9 +336,18 @@ end
 
 -- Redraw only if the list is still on screen. An action can send you into a
 -- note (`<CR>`), and redrawing then would move a cursor that is no longer ours.
+--
+-- Acting from inside the preview (`:FzfKastenTaskDue` reaches the row from
+-- there) draws in the list's window instead, so `render`'s cursor reads and
+-- writes belong to the list rather than to the note being previewed.
 local function refresh()
-    if alive() and vim.api.nvim_get_current_buf() == buf then
+    if not alive() then return end
+    local cur = vim.api.nvim_get_current_buf()
+    if cur == buf then
         render()
+    elseif preview.buf and cur == preview.buf and view
+        and view.win and vim.api.nvim_win_is_valid(view.win) then
+        vim.api.nvim_win_call(view.win, render)
     end
 end
 
@@ -681,6 +690,31 @@ end
 --- Open the list showing the checkboxes `require_tag` leaves out.
 function M.inbox()
     M.open({ inbox = true })
+end
+
+--- True when the list -- or the preview belonging to it -- is the buffer you
+--- are in. `:FzfKastenTaskDue` asks before it edits, so that the same key does
+--- the same thing from a row as it does from the note: the list is a view, and
+--- writing into it would edit nothing.
+function M.is_current()
+    if not alive() then return false end
+    local cur = vim.api.nvim_get_current_buf()
+    return cur == buf or (preview.buf ~= nil and cur == preview.buf)
+end
+
+--- Set, replace or clear the due date on the task under the cursor, writing the
+--- note the row came from. Takes the same date forms as `:FzfKastenTaskDue`,
+--- and is put back by `undo` (`u`), not by Vim's.
+--- @param date string|nil the new due date, or nil/"" to clear
+function M.set_due(date)
+    local task = current_task()
+    if not task then
+        vim.notify("[Fzfkasten] No task on this line.", vim.log.levels.WARN)
+        return
+    end
+    if tasks.due_at(task.path, task.lineno, date) then
+        refresh()
+    end
 end
 
 -- Test hooks (see tests/tasklist_spec.lua). `reset` forgets the buffer and what

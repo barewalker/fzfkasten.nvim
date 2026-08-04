@@ -116,6 +116,7 @@ COMMANDS
 - FzfKastenTaskDue: Set the due date on the current task, e.g.
   `:FzfKastenTaskDue 2026-07-25` (or `2026-07-25T15:00` for a time). Also takes
   a relative spec -- tomorrow / 明日 / +3d / 2w / fri / 金 -- resolved to an
-  absolute day; with no argument, clears the due date.
+  absolute day; with no argument, clears the due date. On a row of the task
+  list it writes the note that row came from, and `u` there puts it back.
 - FzfKastenTaskUndo: Put back the last task line the picker rewrote. <alt-u>
   in the picker. Not Vim's undo: edits you make in a buffer are `u`'s.
