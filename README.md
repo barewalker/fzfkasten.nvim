@@ -399,6 +399,8 @@ Due dates have no key here because they need a date: `:FzfKastenTaskDue fri` set
 
 **The buffer is never written and is not the ledger** — the notes still are. Every action goes through the same writers the picker uses, and the buffer is redrawn from disk afterwards. Close it and nothing is lost. Complete a task and the next moves up under the cursor, so a run of them is one keypress each.
 
+**It keeps up with writes from outside it.** Capture a task with `:FzfKastenTaskAdd` from the note you are writing, tick one off in the picker, set a due date from a row — the list redraws itself wherever it is on screen, so a list open in a split beside you is never behind the notes. `r` is still there for a note edited by hand or by something else entirely. (Editing a note in a buffer is a different matter: the list reads the notes from disk, so those changes show up when you save.)
+
 #### The preview
 
 Under the list is a split showing the task's note around its line, centred on it and following the cursor:

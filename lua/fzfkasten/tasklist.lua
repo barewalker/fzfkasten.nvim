@@ -334,22 +334,31 @@ local function render()
     draw_preview(current_task())
 end
 
--- Redraw only if the list is still on screen. An action can send you into a
--- note (`<CR>`), and redrawing then would move a cursor that is no longer ours.
---
--- Acting from inside the preview (`:FzfKastenTaskDue` reaches the row from
--- there) draws in the list's window instead, so `render`'s cursor reads and
--- writes belong to the list rather than to the note being previewed.
-local function refresh()
-    if not alive() then return end
-    local cur = vim.api.nvim_get_current_buf()
-    if cur == buf then
-        render()
-    elseif preview.buf and cur == preview.buf and view
-        and view.win and vim.api.nvim_win_is_valid(view.win) then
-        vim.api.nvim_win_call(view.win, render)
+--- Redraw the list from the notes, in every window showing it.
+---
+--- Called by every writer in `tasks` (see its `changed`), so the list keeps up
+--- with the notes whoever wrote them: its own keys, the picker, or
+--- `:FzfKastenTaskAdd` typed in the note you were writing. A view that lags the
+--- ledger is worse than no view -- you capture a task and the list you captured
+--- it for still says it isn't there.
+---
+--- Each window is drawn from inside itself, so `render`'s cursor reads and
+--- writes belong to the list rather than to wherever the write came from -- a
+--- note in the window beside it, the preview underneath, fzf's own window.
+---
+--- Off screen this does nothing, and deliberately: an action can send you into
+--- a note (`<CR>`), redrawing then would move a cursor that is no longer ours,
+--- and the list re-scans on `BufWinEnter` anyway when you come back to it.
+function M.refresh()
+    if not alive() or not view then return end
+    for _, win in ipairs(vim.fn.win_findbuf(buf)) do
+        if vim.api.nvim_win_is_valid(win) then
+            vim.api.nvim_win_call(win, render)
+        end
     end
 end
+
+local refresh = M.refresh
 
 -- Change what the list is showing and draw it again.
 local function reshape(changed)
@@ -373,14 +382,17 @@ local function open_task()
     vim.api.nvim_win_set_cursor(0, { math.min(task.lineno, last), 0 })
 end
 
--- Wrap an action that rewrites a note so the list redraws after it. `fn` gets
--- the task under the cursor and is not called when there isn't one.
+-- Wrap an action that rewrites a note. `fn` gets the task under the cursor and
+-- is not called when there isn't one.
+--
+-- The redraw is not here: the `tasks` writers announce their own writes, so a
+-- second one from this side would only re-read every note to draw what is
+-- already on screen.
 local function on_task(fn)
     return function()
         local task = current_task()
         if not task then return end
         fn(task)
-        refresh()
     end
 end
 
@@ -413,19 +425,16 @@ local ACTIONS = {
     },
     undo = {
         desc = "Put back the last line changed",
-        fn = function()
-            tasks.undo()
-            refresh()
-        end,
+        fn = tasks.undo,
     },
     add = {
         desc = "Capture a new task",
         -- The capture steps out to a real input, which cannot run while this
-        -- buffer's mapping is still on the stack in some setups; deferring also
-        -- lets the redraw land after the note is written.
+        -- buffer's mapping is still on the stack in some setups, so defer it.
+        -- The redraw comes from the capture itself, wherever it was started.
         fn = function()
             vim.schedule(function()
-                tasks.capture(nil, refresh)
+                tasks.capture()
             end)
         end,
     },
@@ -712,9 +721,7 @@ function M.set_due(date)
         vim.notify("[Fzfkasten] No task on this line.", vim.log.levels.WARN)
         return
     end
-    if tasks.due_at(task.path, task.lineno, date) then
-        refresh()
-    end
+    tasks.due_at(task.path, task.lineno, date)
 end
 
 -- Test hooks (see tests/tasklist_spec.lua). `reset` forgets the buffer and what

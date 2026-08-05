@@ -49,6 +49,29 @@ local function remember(path, lineno, before, after, added)
     end
 end
 
+-- A note on disk changed under whatever is showing it. Every writer below ends
+-- here, so the task list buffer redraws no matter where the write came from --
+-- the list's own keys, the picker, `:FzfKastenTaskAdd` from the note you were
+-- writing in. Without it a list left open beside you keeps showing the notes as
+-- they were when it opened, and a task you just captured is missing from the
+-- very view you captured it for.
+--
+-- Required here rather than at the top: `tasklist` requires this module, and
+-- the pair would not load. Off screen the redraw costs nothing (see
+-- `tasklist.refresh`), so writers do not have to ask whether the list is up.
+--
+-- Writers are called from fzf's actions and from `vim.ui.input` callbacks,
+-- where changing a buffer can be refused outright (textlock). The note is
+-- already written by then, so a redraw that cannot happen yet waits for the
+-- loop instead of failing the write that asked for it -- the same reason the
+-- `checktime` calls below are deferred.
+local function changed()
+    local list = require('fzfkasten.tasklist')
+    if not pcall(list.refresh) then
+        vim.schedule(list.refresh)
+    end
+end
+
 -- Ask the user's `filter` hook whether to keep a task. A hook that raises
 -- keeps the task: dropping tasks because someone's config threw would hide
 -- work with nothing to show for it.
@@ -954,6 +977,7 @@ function M.toggle_at(path, lineno)
             pcall(vim.cmd, "checktime " .. bufnr)
         end)
     end
+    changed()
     return true
 end
 
@@ -1001,6 +1025,7 @@ function M.tag_at(path, lineno)
             pcall(vim.cmd, "checktime " .. bufnr)
         end)
     end
+    changed()
     return true
 end
 
@@ -1160,6 +1185,7 @@ function M.due_at(path, lineno, date)
             pcall(vim.cmd, "checktime " .. bufnr)
         end)
     end
+    changed()
     return true
 end
 
@@ -1211,6 +1237,7 @@ function M.cancel_at(path, lineno)
             pcall(vim.cmd, "checktime " .. bufnr)
         end)
     end
+    changed()
     return true
 end
 
@@ -1323,6 +1350,7 @@ function M.undo()
             pcall(vim.cmd, "checktime " .. bufnr)
         end)
     end
+    changed()
     return true
 end
 
@@ -1402,6 +1430,7 @@ function M.add(text, due)
             pcall(vim.cmd, "checktime " .. bufnr)
         end)
     end
+    changed()
     vim.notify("[Fzfkasten] Captured to " .. rel, vim.log.levels.INFO)
     return true
 end

@@ -7,6 +7,7 @@
 
 local config = require("fzfkasten.config")
 local tasklist = require("fzfkasten.tasklist")
+local tasks = require("fzfkasten.tasks")
 
 local home
 
@@ -184,6 +185,71 @@ describe("tasklist: keys reach the notes", function()
         vim.api.nvim_win_set_cursor(0, { 1, 0 })
         press("x")
         assert.are.equal("- [ ] alpha #todo", read("n.md")[1])
+    end)
+end)
+
+-- The list is a view of the notes, and the notes are written from more places
+-- than the list: `:FzfKastenTaskAdd` in the note you are writing, the picker,
+-- the toggle key on a checkbox. A view that only redraws when you act on it
+-- from inside is stale the moment you do any of those -- you capture a task and
+-- the list open beside you still says it isn't there.
+describe("tasklist: writes from elsewhere", function()
+    after_each(cleanup)
+
+    local note_win
+
+    local function list_lines()
+        return vim.api.nvim_buf_get_lines(tasklist._test.bufnr(), 0, -1, false)
+    end
+
+    local function row_matching(needle)
+        for _, line in ipairs(list_lines()) do
+            if line:find(needle, 1, true) then return line end
+        end
+        return nil
+    end
+
+    before_each(function()
+        setup({
+            tasks = { capture_note = "tasks/active.md", list = { open = "split" } },
+        })
+        note("n.md", { "- [ ] alpha #todo" })
+        note_win = vim.api.nvim_get_current_win()
+        tasklist.open()
+        -- Back to the window the list was opened from: every case below writes
+        -- from there, which is where a capture actually comes from.
+        vim.api.nvim_set_current_win(note_win)
+    end)
+
+    it("shows a task captured from another window", function()
+        assert.is_true(tasks.add("captured elsewhere"))
+        assert.are.equal("Tasks — 2   ·   priority", list_lines()[1])
+        assert.is_truthy(row_matching("captured elsewhere"))
+    end)
+
+    it("drops a task ticked off from another window", function()
+        assert.is_true(tasks.toggle_at(home .. "/n.md", 1))
+        assert.are.equal("Tasks — 0   ·   priority", list_lines()[1])
+        assert.are.equal("  No open tasks.", list_lines()[3])
+    end)
+
+    -- Drawing the list must not take you out of the note you were writing in.
+    it("leaves you in the window the write came from", function()
+        local cursor = vim.api.nvim_win_get_cursor(note_win)
+        assert.is_true(tasks.add("captured elsewhere"))
+        assert.are.equal(note_win, vim.api.nvim_get_current_win())
+        assert.are.same(cursor, vim.api.nvim_win_get_cursor(note_win))
+    end)
+
+    -- Off screen there is nothing to draw and nothing to break; the list
+    -- re-scans when it comes back.
+    it("keeps out of the way while the list is hidden", function()
+        for _, win in ipairs(vim.fn.win_findbuf(tasklist._test.bufnr())) do
+            pcall(vim.api.nvim_win_close, win, true)
+        end
+        assert.is_true(tasks.add("captured while hidden"))
+        tasklist.open()
+        assert.are.equal("Tasks — 2   ·   priority", lines()[1])
     end)
 end)
 
