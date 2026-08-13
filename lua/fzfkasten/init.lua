@@ -59,7 +59,7 @@ M.task_list_inbox = function() require('fzfkasten.tasklist').inbox() end
 M.collect_tasks = function(opts) return require('fzfkasten.tasks').collect(opts) end
 M.claude_send_buffer = function() require('fzfkasten.claude').send_current_buffer() end
 M.claude_send_selection = function() require('fzfkasten.claude').send_selection() end
-M.claude_toggle = function() require('fzfkasten.claude').toggle_terminal() end
+M.claude_pane = function() require('fzfkasten.claude').choose_pane() end
 M.claude_prompt = function(name) require('fzfkasten.claude').send_prompt(name) end
 M.claude_prompt_names = function() return require('fzfkasten.claude').prompt_names() end
 return M

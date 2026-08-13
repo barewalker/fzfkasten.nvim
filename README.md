@@ -28,7 +28,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **Fzfkasten Panel**: A central menu for common actions (Open, Backlinks, Rename, Delete).
 - [x] **New Templated Notes**: Create new notes from predefined templates with interactive selection.
 - [x] **Log picker**: One picker (`:FzfKastenLog`) over recent days and weeks — existing notes preview and open, missing dates are created from a template, all in one place.
-- [x] **Claude Code Integration**: Optional integration with `claudecode.nvim` to send notes/selections to Claude (disabled by default).
+- [x] **Claude Code Integration**: Optional. Sends notes and named prompts to the Claude Code running in a herdr or tmux pane — on this machine or over ssh — by typing into it. Disabled by default; see [Claude Code Integration](#claude-code-integration).
 - [x] **Link Aliasing**: `[[note|alias]]` syntax is supported across follow link, backlinks, and rename. Anchors (`[[note#heading]]`) too, and all three read them alike.
 - [x] **Filename Sanitization**: Unicode-safe default (preserves CJK) with a user-overridable `transform.sanitize_filename` hook.
 - [x] **Template Placeholders**: Built-in `{{title}} {{date}} {{hdate}} {{year}} {{month}} {{day}} {{week}} {{time}}` plus user-defined entries via `template_placeholders` (string or function values).
@@ -117,6 +117,15 @@ Here is the default configuration. You can override any of these settings in the
   },
   claude = {
     enabled = false, -- set to true to enable Claude Code integration
+    pane = {         -- where Claude Code is running; see "Claude Code Integration"
+      via = "herdr", -- or "tmux"
+      target = nil,  -- pane id/name; unset means pick from a list and remember
+      host = nil,    -- ssh host the pane is on; unset means this machine
+      cmd = nil,     -- the multiplexer's executable; defaults to `via`
+      root = nil,       -- where `home` is on that machine, when the two differ
+      max_lines = 500,  -- cap on pasting a buffer that has no file behind it
+    },
+    prompts = {},    -- named strings sent with :FzfKastenClaudePrompt <name>
   },
   fzf = {
     winopts = {
@@ -367,10 +376,10 @@ So `:FzfKastenTaskList` draws the same tasks into an ordinary scratch buffer, wh
 ```
 Tasks — 14   ·   priority
 
-(A) 月報7月分  [due 2026-07-27]                          tasks/active.md:32
-(A) phi0.3mm プローブの作製  [0/1]  [due 2026-07-31]     tasks/active.md:26
-  ↳ (A) 図面作製、出図                                   tasks/active.md:27
-(B) 渋谷光学の精密ミクロメータ校正  [due 2026-07-24]     tasks/active.md:25
+(A) draft the monthly report  [due 2026-07-27]             tasks/active.md:32
+(A) make the phi0.3 mm probe  [0/1]  [due 2026-07-31]      tasks/active.md:26
+  ↳ (A) draw it up and issue the drawing                   tasks/active.md:27
+(B) calibrate the precision micrometer  [due 2026-07-24]   tasks/active.md:25
 ```
 
 | Key | Action |
@@ -407,13 +416,13 @@ Under the list is a split showing the task's note around its line, centred on it
 
 ```
 Tasks — 14   ·   priority
-フック・分銅皿の取付が可能な治具の作製  ← ロック時に半球の引き剥しに…
+build a jig that takes the hook and the pan  ← how much force it takes to…
 ────────────────────────────────────────────────────────────
   134  # How to assess the gripping-force to hold the holder
-  136  - 入荷したらまずは摺動面の表面観察を行う
-  138  - ロック時に半球の引き剥しにどの程度の力が必要なのかを評価する
-▶ 139    - [ ] フック・分銅皿の取付が可能な治具の作製 #todo
-  140  - 設定した位置に任意の荷重を印加可能な仕組み
+  136  - look over the sliding surfaces first, as soon as they arrive
+  138  - how much force it takes to pull the hemisphere off when locked
+▶ 139    - [ ] build a jig that takes the hook and the pan #todo
+  140  - a way to apply any given load at a set position
 ```
 
 **It is an ordinary window, which is the whole design.** `p` goes into it and every Vim key works there — `j`, `gg`, `/`, `<c-d>`, `<c-w>p` — because nothing has been reimplemented. `<esc>` or `<c-q>` comes back to the list; deliberately not `q`, which closes the list, since one key meaning "leave this window" in one place and "close the whole thing" in another is a coin toss you make every time.
@@ -782,21 +791,36 @@ Each task is `{ text, done, priority, due, path, rel, lineno, date }`. `require(
 
 ## Claude Code Integration
 
-Fzfkasten provides optional integration with [claudecode.nvim](https://github.com/coder/claudecode.nvim) to send notes or selections to Claude Code directly from your editor.
+Most people run Claude Code where they have always run long-lived processes: in
+a pane of a terminal multiplexer, next to the editor rather than inside it.
+Fzfkasten sends notes and prompts to that pane, by typing into it the way you
+would — through [herdr](https://herdr.dev)'s or tmux's CLI.
+
+> **Changed in 0.2.0.** This used to drive [claudecode.nvim](https://github.com/coder/claudecode.nvim)
+> and an editor-embedded Claude terminal. That dependency is gone, along with
+> `:FzfKastenClaudeToggle`. What went with it is the editor protocol: the pane
+> cannot see your editor, so a note becomes context by being *named* in the
+> text, not by being open. Line-range selections and diffs written back into
+> your buffers are not part of this; reaching the Claude you actually run, from
+> nvim or over ssh, is.
 
 ### Setup
 
-1. Install `coder/claudecode.nvim` as an additional dependency.
-2. Enable the integration in your setup:
+Nothing to install beyond the multiplexer you already use:
 
 ```lua
 require("fzfkasten").setup({
   claude = {
     enabled = true,
-    -- Named prompts you can fire into the Claude terminal by name.
+    pane = {
+      via = "herdr",   -- or "tmux"
+      target = nil,    -- unset: the panes are listed and you pick one
+    },
+    -- Named prompts you send by name.
     prompts = {
-      -- Open (or create) this week's weekly note, then type "/my-weekly-retro"
-      -- into Claude and submit it -- e.g. to run one of your own skills.
+      -- Open (or create) this week's weekly note, then type
+      -- "@/path/to/2026-W33.md /my-weekly-retro" into the Claude pane and
+      -- submit it -- e.g. to run one of your own skills against that note.
       retro = { note = "weekly", text = "/my-weekly-retro" },
     },
   },
@@ -805,23 +829,111 @@ require("fzfkasten").setup({
 
 ### Commands
 
-*   **`:FzfKastenClaudeSendBuffer`**: Send the entire current note to Claude as an `@mention`.
-*   **`:FzfKastenClaudeSendSelection`**: Send the visual selection to Claude.
-*   **`:FzfKastenClaudeToggle`**: Toggle the Claude terminal.
-*   **`:FzfKastenClaudePrompt <name>`**: Send a prompt registered in `claude.prompts`
-    to the Claude terminal (starting it if needed). The prompt's `note` is opened
-    first so Claude has it as context. `<Tab>` completes the configured names.
+*   **`:FzfKastenClaudePrompt <name>`**: Send a prompt registered in `claude.prompts`.
+    The prompt's `note` is opened here and named in the text, so Claude reads it
+    as context. `<Tab>` completes the configured names.
+*   **`:FzfKastenClaudeSendBuffer`**: Put the current buffer to the pane, without
+    submitting, so you can type the request after it.
+*   **`:FzfKastenClaudeSendSelection`**: The same, for the selected line range.
+*   **`:FzfKastenClaudePane`**: Pick which pane Claude is in, replacing the one
+    picked earlier this session.
+
+### Notes are named, views are pasted
+
+A note is a file, so it is **named**: the pane is sent `@/abs/path` (quoted,
+`"/abs/path with spaces.md"`, when the name has spaces in it, since Claude's `@`
+ends at the first one). Claude reads the file itself, follows links out of it,
+and can write back to it.
+
+A buffer fzfkasten made and never wrote — the task list, a preview — has no file
+to name, so what it *shows* is **pasted** instead, under the buffer's name:
+
+```
+fzfkasten://tasks:
+(A) draft the monthly report  [due 2026-07-27]  tasks/active.md:32
+(B) write up the calibration  [0/1]             tasks/active.md:26
+  ↳ read back the sensor logs                   lognote/2026-W30.md:14
+```
+
+The note and line at the end of each row are virtual text — on the screen, not
+in the buffer's lines — and are taken along, so a pasted task list still says
+where each task came from and Claude can go read those notes. This is a copy,
+not a reference: Claude cannot write back into a view that was never a file.
+`pane.max_lines` (500) caps how much is pasted; past it, send a selection.
+
+A file buffer that has never been written is refused rather than pasted — save
+it, and it can be named like any other note.
+
+### Which pane
+
+With `pane.target` unset, the first send of each session lists the panes and
+asks; the answer is remembered until nvim closes. herdr labels a pane with the
+agent running in it and tmux reports the running command, so the list is
+narrowed to the Claude panes when either can tell.
+
+| Field    | Meaning                                                                                              |
+| -------- | ---------------------------------------------------------------------------------------------------- |
+| `via`    | `"herdr"` or `"tmux"` — whose CLI does the typing. Defaults to `"herdr"`.                             |
+| `target` | A herdr pane id or agent name (`"w1:p2"`, `"claude"`), or a tmux target (`"%3"`, `"notes:1.2"`). Unset means ask. |
+| `host`   | An ssh host to run that CLI on. Unset means this machine.                                            |
+| `cmd`    | The executable. Defaults to `via` — give a full path when a non-interactive ssh would not find it.    |
+| `root`   | Where `home` is on the `host` machine, when the two differ.                                           |
+| `paste`  | Send the text as a paste rather than as typing. Defaults to `true`; see below.                        |
+| `max_lines` | How much of a view may be pasted at once. Defaults to `500`.                                      |
+
+### Pasted, not typed
+
+The text goes in wrapped in the terminal's bracketed-paste markers (DEC mode
+2004), and only the Return that submits it is sent as a keystroke. That is what
+the text is — content from elsewhere rather than keys someone pressed — and
+saying so is what makes it arrive intact. A prompt with newlines in it would
+otherwise be submitted a line at a time, its first line running as a message of
+its own; and anything that reads keystrokes on the way into the pane, such as an
+input method, would otherwise interpret the characters instead of taking them
+literally. Pasted content is passed through untouched by convention — the same
+reason tmux offers `paste-buffer -p`. Set `pane.paste = false` when sending to
+something that does not understand a paste.
+
+### A pane on another machine
+
+Set `host` and the CLI runs over ssh, which is enough to work from an editor on
+a laptop against the Claude on a workstation:
+
+```lua
+pane = {
+  via = "herdr",
+  host = "workstation",
+  cmd = "/home/me/.local/bin/herdr", -- a non-interactive ssh gets a shorter PATH
+  root = "/home/me/zettelkasten",    -- where the collection sits over there
+},
+```
+
+Notes are named to Claude by their path on that machine, which means it reads
+**its own copy** of the collection — the same git clone, not the file you just
+edited. So before sending, fzfkasten looks at how the note stands with git and
+says what the far end would actually read:
+
+*   committed and pushed — sent without a word;
+*   committed but not pushed — offers to push here, `pull --ff-only` there, then send;
+*   uncommitted — says so, and sends only if you say to.
+
+It never commits for you, and never merges on the far end. What to commit, and
+under what message, is not a decision to take on a note collection from a send
+keybinding.
 
 ### Configured prompts
 
 Each entry under `claude.prompts` is a named string you send with
 `:FzfKastenClaudePrompt <name>`:
 
-| Field    | Meaning                                                                                         |
-| -------- | ----------------------------------------------------------------------------------------------- |
-| `text`   | The string typed into the Claude terminal (required).                                            |
-| `note`   | `"weekly"` \| `"daily"` \| `"current"` (or omit) -- a note opened, and created from its template if missing, before the text is sent, so Claude reads it as context. `"current"`/omitted opens nothing. |
-| `submit` | Send a trailing `<CR>` so Claude runs it immediately. Defaults to `true`.                        |
+| Field    | Meaning                                                                                          |
+| -------- | ------------------------------------------------------------------------------------------------ |
+| `text`   | The string typed into the pane (required).                                                        |
+| `note`   | `"weekly"` \| `"daily"` \| `"current"` (or omit) — the note the prompt is about, named in the text so Claude reads it as context. `weekly`/`daily` are opened first, and created from their template if missing; `"current"` is the note you are in; omitting it names no note. |
+| `submit` | Send a trailing Return so Claude runs it immediately. Defaults to `true`.                          |
+
+A note is named as `@/abs/path`, or quoted (`"/abs/path with spaces.md"`) when
+its name has spaces in it, since Claude's `@` ends at the first one.
 
 This is deliberately generic: register whatever prompt (a slash command, a
 question, a canned instruction) suits your workflow. With no `prompts`
@@ -830,13 +942,15 @@ configured the command simply lists that none are set.
 ### Example Keymaps
 
 ```lua
-{ "<leader>kc", "<cmd>FzfKastenClaudeSendBuffer<CR>", desc = "Send note to Claude" },
-{ "<leader>kc", "<cmd>FzfKastenClaudeSendSelection<CR>", mode = "v", desc = "Send selection to Claude" },
-{ "<leader>kC", "<cmd>FzfKastenClaudeToggle<CR>", desc = "Toggle Claude terminal" },
+{ "<leader>kc", "<cmd>FzfKastenClaudeSendBuffer<CR>", desc = "Name note to Claude" },
+{ "<leader>kc", "<cmd>FzfKastenClaudeSendSelection<CR>", mode = "v", desc = "Name selection to Claude" },
+{ "<leader>kC", "<cmd>FzfKastenClaudePane<CR>", desc = "Pick the Claude pane" },
 { "<leader>kr", "<cmd>FzfKastenClaudePrompt retro<CR>", desc = "Send retro prompt to Claude" },
 ```
 
-If `claudecode.nvim` is not installed or `claude.enabled` is `false`, the commands will show a warning and do nothing — fzfkasten continues to work normally.
+If `claude.enabled` is `false`, or the multiplexer's CLI is not there, the
+commands show a warning and do nothing — fzfkasten continues to work normally.
+`:checkhealth fzfkasten` reports which pane a send would go to.
 
 ## Google Calendar Integration
 

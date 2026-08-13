@@ -314,14 +314,44 @@ M.defaults = {
  },
  claude = {
   enabled = false,
-  -- Named prompts fired into the Claude terminal with
-  -- `:FzfKastenClaudePrompt <name>`. Each entry:
-  --   text   : the string typed into the Claude terminal (required).
-  --   note   : "weekly" | "daily" | "current" (or nil) -- a note opened
-  --            (created from its template if missing) before the text is sent,
-  --            so Claude reads it as the active context. "current"/nil opens
-  --            nothing and sends from wherever you are.
-  --   submit : send a trailing <CR> so Claude runs it now (default true).
+  -- Claude Code runs in a pane of a terminal multiplexer, and that is where
+  -- notes and prompts are sent -- by typing into it, the way you would.
+  pane = {
+   -- Which multiplexer's CLI does the typing: "herdr" or "tmux".
+   via = "herdr",
+   -- The pane to send to: a herdr pane id or agent name ("w1:p2", "claude"),
+   -- or a tmux target ("%3", "notes:1.2"). Left unset, the panes are listed
+   -- and you pick one, which is then remembered until nvim is closed.
+   target = nil,
+   -- ssh host the pane is on. Unset means this machine. With it set, the CLI
+   -- runs over there -- so `cmd` may need to be an absolute path, since a
+   -- non-interactive ssh gets a shorter PATH than your shell does.
+   host = nil,
+   -- The multiplexer's executable. Defaults to `via`.
+   cmd = nil,
+   -- Send the text as a paste (wrapped in the terminal's bracketed-paste
+   -- markers) rather than as typing. Keeps a prompt with newlines in it from
+   -- being submitted a line at a time, and keeps anything that reads keystrokes
+   -- on the way in from interpreting the characters. Turn off only for a
+   -- receiver that doesn't understand a paste.
+   paste = true,
+   -- A buffer with no file behind it (the task list, a preview) is sent by
+   -- pasting what it shows, since there is nothing for the pane to read. This
+   -- caps how much: past it, send a selection instead, or raise this.
+   max_lines = 500,
+   -- Where `home` is on the `host` machine, when the two differ. Notes are
+   -- named to Claude by their path over there, and the collection is expected
+   -- to be the same one -- the same git clone, kept in step (see below).
+   root = nil,
+  },
+  -- Named prompts sent to the pane with `:FzfKastenClaudePrompt <name>`.
+  -- Each entry:
+  --   text   : the string typed into the pane (required).
+  --   note   : "weekly" | "daily" | "current" (or nil) -- the note the prompt
+  --            is about, named in the text so Claude reads it as context.
+  --            weekly/daily are opened first (created from their template if
+  --            missing), "current" is the note you are in, nil names none.
+  --   submit : send a trailing Return so Claude runs it now (default true).
   -- e.g. retro = { note = "weekly", text = "/my-weekly-retro" }
   prompts = {},
  },
