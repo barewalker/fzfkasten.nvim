@@ -153,14 +153,42 @@ local function check_optional()
     end
 
     local claude = config.options.claude or {}
+    local pane = claude.pane or {}
+    local backends = require("fzfkasten.claude").backends()
     if not claude.enabled then
         health.info("Claude integration is off (claude.enabled = false).")
-    elseif pcall(require, "claudecode") then
-        health.ok("claudecode.nvim")
-    else
-        health.error("claude.enabled is true but claudecode.nvim is not installed", {
-            "The :FzfKastenClaude* commands will warn and do nothing.",
+    elseif not vim.tbl_contains(backends, pane.via or "herdr") then
+        health.error("claude.pane.via is '" .. tostring(pane.via) .. "', which is not a multiplexer", {
+            "Use one of: " .. table.concat(backends, ", ") .. ".",
         })
+    else
+        local via = pane.via or "herdr"
+        local cmd = pane.cmd or via
+        -- A pane on another machine is reached by running that CLI over ssh, so
+        -- what has to be here is ssh; whether the far end has `cmd` on its PATH
+        -- is a question only that machine can answer (and a non-interactive ssh
+        -- gets a shorter PATH than a shell does, which is the usual surprise).
+        if pane.host and pane.host ~= "" then
+            if vim.fn.executable("ssh") == 1 then
+                health.ok(("Claude pane: %s on %s, via ssh"):format(via, pane.host))
+                health.info(("Check the far end yourself: ssh %s %s --version"):format(pane.host, cmd))
+            else
+                health.error("claude.pane.host is set but ssh is not on PATH")
+            end
+            if not pane.root or pane.root == "" then
+                health.info("claude.pane.root is unset, so notes are named to "
+                    .. pane.host .. " by their path here (" .. config.options.home .. ").")
+            end
+        elseif vim.fn.executable(cmd) == 1 then
+            health.ok("Claude pane: " .. via .. " on this machine")
+        else
+            health.error("claude.enabled is true but `" .. cmd .. "` is not on PATH", {
+                "The :FzfKastenClaude* commands will warn and do nothing.",
+            })
+        end
+        if not pane.target or pane.target == "" then
+            health.info("claude.pane.target is unset, so the first send of each session asks which pane.")
+        end
     end
 end
 

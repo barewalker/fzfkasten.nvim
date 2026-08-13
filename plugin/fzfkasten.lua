@@ -32,14 +32,14 @@ cmd("FzfKastenTaskDue", function(o) require('fzfkasten').task_due(o.args) end, {
 cmd("FzfKastenTaskUndo", function() require('fzfkasten').task_undo() end, { desc = "Fzfkasten: Put back the last task line the picker rewrote" })
 cmd("FzfKastenTaskList", function() require('fzfkasten').task_list() end, { desc = "Fzfkasten: Task list as a buffer, worked with Vim keys" })
 cmd("FzfKastenTaskListInbox", function() require('fzfkasten').task_list_inbox() end, { desc = "Fzfkasten: Task list buffer, showing the inbox" })
-cmd("FzfKastenClaudeSendBuffer", function() require('fzfkasten').claude_send_buffer() end, { desc = "Fzfkasten: Send note to Claude" })
-cmd("FzfKastenClaudeSendSelection", function() require('fzfkasten').claude_send_selection() end, { range = true, desc = "Fzfkasten: Send selection to Claude" })
-cmd("FzfKastenClaudeToggle", function() require('fzfkasten').claude_toggle() end, { desc = "Fzfkasten: Toggle Claude terminal" })
+cmd("FzfKastenClaudeSendBuffer", function() require('fzfkasten').claude_send_buffer() end, { desc = "Fzfkasten: Name this note to the Claude pane" })
+cmd("FzfKastenClaudeSendSelection", function() require('fzfkasten').claude_send_selection() end, { range = true, desc = "Fzfkasten: Name this note and line range to the Claude pane" })
+cmd("FzfKastenClaudePane", function() require('fzfkasten').claude_pane() end, { desc = "Fzfkasten: Pick which pane Claude is in" })
 cmd("FzfKastenClaudePrompt", function(o) require('fzfkasten').claude_prompt(o.args) end, {
 	nargs = "?",
 	complete = function(arglead)
 		return vim.tbl_filter(function(n) return n:find(arglead, 1, true) == 1 end,
 			require('fzfkasten').claude_prompt_names())
 	end,
-	desc = "Fzfkasten: Send a configured prompt to the Claude terminal",
+	desc = "Fzfkasten: Send a configured prompt to the Claude pane",
 })
