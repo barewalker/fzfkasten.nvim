@@ -1,7 +1,8 @@
 local M = {}
 
 M.defaults = {
- -- 優先順位: 環境変数 > デフォルト値 (~/notes)
+ -- The environment wins over the default, so a collection can be pointed at
+ -- without touching setup().
  home = os.getenv("ZETTELKASTEN_HOME") or vim.fn.expand("~/notes"),
  extension = "md",
  hdate_format = "%B %d, %Y",
@@ -379,14 +380,13 @@ M.options = vim.tbl_deep_extend("force", M.defaults, {})
 M.configured = false
 
 function M.setup(user_opts)
- -- M.defaults と user_opts をマージ
+ -- Deep so a user table naming one field of a nested option keeps the rest.
  M.options = vim.tbl_deep_extend("force", M.defaults, user_opts or {})
  M.configured = true
 
- -- パスの展開 (~ をフルパスに変換)
+ -- `~` is written by hand and read by every other module, so expand it once.
  M.options.home = vim.fn.expand(M.options.home)
 
- -- 未設定時のバリデーション
  if M.options.home == "" then
   vim.notify("[Fzfkasten] 'home' directory is not configured!", vim.log.levels.ERROR)
   return
