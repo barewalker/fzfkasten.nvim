@@ -515,13 +515,19 @@ If your notes are written in Japanese, fzf's own filter needs you to type Japane
 
 The same `<alt-/>` drives link insertion (`:FzfKastenInsert`) and a romaji **content search** in `:FzfKastenSearchContent` — that last one is where it pays off most, since note bodies are mostly Japanese while filenames often are not.
 
-**The note finder does it without a second key.** In `:FzfKastenFindNotes`, a query beginning with `/` is romaji: type `/kaigi` and the list narrows to notes matching 会議. Anything else is fzf's own fuzzy matching, unchanged — `nvmcfg` still finds `nvim/config/init.lua`, ranked the way fzf ranks it. The header says so, with the example rather than a description of one:
+**The note finder does it without a second key.** In `:FzfKastenFindNotes`, a query beginning with `/` is romaji: type `/kaigi` and the list narrows to notes matching 会議. Anything else is ordinary fuzzy matching — `nvmcfg` still finds `nvim/config/init.lua`, `nvim conf` still ANDs its two words. The header says so, with the example rather than a description of one:
 
 ```
 prefix / for romaji:  /kaigi → 会議
 ```
 
-The `/` token is borrowed from [fzf-jp-extension](https://github.com/takumayokoo/fzf-jp-extension), which patches it into fzf itself; doing it outside keeps stock fzf. Matching runs per keystroke — the note index is built once when the picker opens (~30ms over 464 notes), a plain query costs ~6ms through `fzf --filter`, and a romaji one ~40ms. With no backend installed, `/kaigi` simply matches the text `kaigi` and the header stays quiet.
+The `/` token is borrowed from [fzf-jp-extension](https://github.com/takumayokoo/fzf-jp-extension), which patches it into fzf itself; doing it outside keeps stock fzf. With no backend installed, `/kaigi` simply matches the text `kaigi` and the header stays quiet.
+
+Because fzf's own matching is off while this is in play, everything on the typing path is work fzfkasten does itself, and it is paid again on every keystroke — so none of it leaves this process. The note index comes from two `rg` passes when the picker opens (the file list, then every heading in the collection); matching a plain query is `vim.fn.matchfuzzy()`. Over 491 notes on Linux that is 19 ms to open and 0.3 ms per keystroke.
+
+It is written that way because of what the obvious version costs elsewhere. Measured over the same collection on WSL2 on a corporate laptop, `vim.fn.glob("**/*.md")` — which walks the tree from inside Neovim, one directory at a time, `.git` included — took **6.2 seconds** against 11 ms on Linux, and reading each note for its headings took another 3.5 s; a `fzf --filter` per keystroke cost 166 ms there against 4.5 ms. Nothing about that setup is unhealthy, and none of it was visible: the picker simply opened ten seconds later. Handing the walk to `rg`, which goes in parallel and skips dot-directories itself, and keeping the match in process, is what makes the finder usable on a machine like that.
+
+The other thing on this path is the romaji backend, which is asked once per keystroke while a `/` query is being typed. `:checkhealth fzfkasten` times it and says so.
 
 #### Romaji backends
 
@@ -529,7 +535,7 @@ Reaching 会議 from `kaigi` takes a migemo — a converter that reaches the *ka
 
 | | what it is | what it costs |
 |---|---|---|
-| [ttyskk](https://github.com/barewalker/ttyskk) | `ttyskk migemo`, reading the SKK dictionaries already on the machine | nothing beyond itself; ~30ms per query |
+| [ttyskk](https://github.com/barewalker/ttyskk) | `ttyskk migemo`, reading the SKK dictionaries already on the machine | nothing beyond itself; ~20ms per query, once indexed |
 | [kensaku.vim](https://github.com/lambdalisue/kensaku.vim) | a denops plugin | Deno, plus a 2.1MB dictionary downloaded on first use |
 
 `romaji.backend` decides. The default `"auto"` tries ttyskk first and falls back to kensaku, so a machine with either just works.
@@ -545,7 +551,15 @@ romaji = {
 
 Naming one pins it: asked for ttyskk on a machine without it, `<alt-/>` stays hidden rather than quietly starting Deno instead. `false` turns the key off entirely. To supply your own, pass a table with `available()`, `regex(romaji)` (a `\m` Vim regex) and `rg_regex(romaji)` (a ripgrep pattern) — both flavours are needed, because the pickers filter in Lua while content search shells out to `rg`, and handing `rg` a Vim pattern does not fail, it matches nothing.
 
-`:checkhealth fzfkasten` reports which backend answered.
+**If you use ttyskk, build its reading index once:**
+
+```
+ttyskk migemo --build-index
+```
+
+It takes about half a second and is not built for you. Without it, `ttyskk migemo` re-reads the SKK dictionaries on every call — 270ms against 20ms measured here — and the note finder calls it on every keystroke of a `/` query, so the picker appears to freeze while you type.
+
+`:checkhealth fzfkasten` reports which backend answered and how long it took to answer, which is the number that decides whether `/kaigi` feels instant.
 
 ### Choosing what counts as a task
 

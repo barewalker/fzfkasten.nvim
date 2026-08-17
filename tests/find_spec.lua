@@ -7,9 +7,13 @@
 -- The `/` is there because fzf matches literally and cannot be taught about
 -- Japanese, so the matching has to happen out here -- which means fzf's own
 -- matching is off (`--disabled`) and ordinary typing needs a fuzzy matcher of
--- its own. That one is `fzf --filter`, fzf's, so the two modes cost each other
--- nothing. The token is borrowed from fzf-jp-extension, which patches it into
--- fzf itself.
+-- its own. That one is `vim.fn.matchfuzzy()`, in this process, because
+-- everything on this path is paid again on every keystroke. The token is
+-- borrowed from fzf-jp-extension, which patches it into fzf itself.
+--
+-- "the way fzf does" below is the case that pins the swap: `matchfuzzy` replaced
+-- a `fzf --filter` per keystroke (4.5ms here, 166ms on WSL2) and has to keep
+-- answering what fzf answered for the queries people actually type.
 --
 -- Matching against headings and not only paths is what makes any of this worth
 -- doing: measured against 464 real notes, 32 had any Japanese in the filename
@@ -136,6 +140,29 @@ describe("the note finder", function()
     it("lists bare paths, so opening one still works", function()
         local list = shown("/tanaka")
         assert.are.equal(1, vim.fn.filereadable(home .. "/" .. list[1]))
+    end)
+
+    -- The list comes from `rg --files` rather than a glob, and rg reads
+    -- .gitignore. A collection that ignores a directory of notes -- generated
+    -- ones, a vendored archive -- would otherwise find them gone from the finder
+    -- the day this changed, with nothing to say why.
+    it("lists a note its .gitignore hides", function()
+        note(".gitignore", { "generated/" })
+        note("generated/報告.md", { "# 田中" })
+        assert.is_truthy(vim.tbl_contains(shown(""), "generated/報告.md"))
+        -- ...and it is indexed, not merely listed: its heading answers too.
+        assert.is_truthy(vim.tbl_contains(shown("/tanaka"), "generated/報告.md"))
+    end)
+
+    -- The list is shelled out to now, and a command run in a directory that is
+    -- not there raises where a glob simply found nothing. `home` pointing
+    -- somewhere absent is a configuration mistake `:checkhealth` names by
+    -- itself; opening a picker should not also throw at whoever opened it.
+    it("comes up empty when home does not exist, rather than throwing", function()
+        setup({ home = home .. "/gone" })
+        local ok, list = pcall(t.note_index)
+        assert.is_true(ok)
+        assert.are.same({}, list)
     end)
 
     it("survives a note it cannot read", function()
