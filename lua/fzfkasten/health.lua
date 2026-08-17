@@ -132,6 +132,27 @@ local function check_dependencies()
     end
 end
 
+-- How long the backend takes to answer one query, said out loud.
+--
+-- The note finder asks on every keystroke, so this number *is* the typing
+-- latency -- and nothing else in the setup shows it. A ttyskk without its
+-- reading index answers in 270ms rather than 20ms, which everything else here
+-- reports as a perfectly healthy romaji backend.
+local function check_romaji_speed(romaji, advice)
+    local started = vim.uv.hrtime()
+    local re = romaji.regex("kaigi")
+    local elapsed = (vim.uv.hrtime() - started) / 1e6
+
+    if not re then
+        health.warn("...but it answered nothing for `kaigi`, so `/kaigi` will match literally")
+    elseif elapsed > 100 then
+        health.warn(string.format("...but slowly: %.0fms per query, paid on every keystroke", elapsed),
+            advice)
+    else
+        health.ok(string.format("%.0fms per query", elapsed))
+    end
+end
+
 local function check_optional()
     health.start("Optional integrations")
 
@@ -142,12 +163,20 @@ local function check_optional()
     local backend = romaji.backend_name()
     if backend == "ttyskk" then
         health.ok("romaji narrowing via ttyskk: <alt-/> matches 会議 from `kaigi`")
+        check_romaji_speed(romaji, {
+            "ttyskk re-reads the SKK dictionaries on every query unless it has an index.",
+            "Build one once: `ttyskk migemo --build-index` (~0.4s, 270ms -> 20ms here).",
+        })
     elseif backend == "kensaku" then
         health.ok("romaji narrowing via kensaku.vim: <alt-/> matches 会議 from `kaigi`", {
             "kensaku runs on denops, so this needs Deno; `ttyskk migemo` does not.",
         })
+        check_romaji_speed(romaji, {
+            "denops answers over RPC; a cold Deno is slow until it has warmed up.",
+        })
     elseif backend then
         health.ok("romaji narrowing via a backend of your own: " .. tostring(backend))
+        check_romaji_speed(romaji, nil)
     else
         health.info("No romaji backend (ttyskk or kensaku.vim); <alt-/> is hidden.")
     end

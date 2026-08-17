@@ -5,13 +5,52 @@ local buffer = require('fzfkasten.buffer') -- Opens notes and applies per-buffer
 local romaji = require('fzfkasten.romaji') -- Optional romaji narrowing (/ prefix, <alt-/>)
 local M = {}
 
+-- Run ripgrep in the notes directory, or nil when it could not be asked.
+--
+-- pcall because `vim.system` raises rather than returning a status when the cwd
+-- is not there, and a `home` that does not exist is a configuration mistake
+-- `:checkhealth` already names -- the pickers' job is to come up empty, as they
+-- did when this was a glob, not to throw at whoever opened one.
+--- @return string[]|nil lines of rg's stdout
+local function rg_in_home(args)
+    if vim.fn.executable("rg") ~= 1 then return nil end
+    local ok, rg = pcall(function()
+        return vim.system(args, { cwd = config.options.home, text = true }):wait()
+    end)
+    -- 1 is "nothing found", a legitimate answer for an empty collection; above
+    -- that rg failed, and reading the files ourselves answers that better than
+    -- an empty picker does.
+    if not ok or rg.code > 1 then return nil end
+    return vim.split(rg.stdout or "", "\n", { plain = true })
+end
+
 -- Every note file under `home`, as a path relative to `home` -- the same shape
 -- `fzf.files` shows, so `entry_to_file(.., { cwd = home })` resolves either.
 -- Used to rebuild the finder as a plain list when a romaji filter is active.
+--
+-- ripgrep rather than `vim.fn.glob("**/*.md")`, which is what this was. Vim's
+-- `**` walks the tree inside Neovim, one directory at a time, and descends into
+-- `.git` on the way. Over 491 notes on a Linux filesystem that costs 11ms and
+-- nobody notices; over the same collection on WSL2 it measured **6.2 seconds**,
+-- paid every time the finder opened, before a key was pressed. rg walks it in
+-- parallel, in one process, and skips dot-directories itself: 7ms there. This
+-- is also what `fzf.files` was doing for us before the finder went live -- the
+-- glob was the regression.
+--
+-- `--no-ignore-vcs` because the glob showed every note; a collection that
+-- gitignores a directory of notes would otherwise find them quietly gone.
 local function note_rel_paths()
-    local pattern = utils.join_path(config.options.home, "**/*." .. config.options.extension)
-    local files = vim.fn.glob(pattern, true, true) or {}
     local home = config.options.home
+    local ext = config.options.extension
+
+    local listed = rg_in_home({
+        "rg", "--files", "--no-messages", "--no-ignore-vcs", "--glob", "*." .. ext,
+    })
+    if listed then
+        return vim.tbl_filter(function(rel) return rel ~= "" end, listed)
+    end
+
+    local files = vim.fn.glob(utils.join_path(home, "**/*." .. ext), true, true) or {}
     local rels = {}
     for _, f in ipairs(files) do
         rels[#rels + 1] = f:gsub("^" .. vim.pesc(home) .. "/?", "")
@@ -19,78 +58,116 @@ local function note_rel_paths()
     return rels
 end
 
--- Notes the romaji filter matches, by path or by their own headings.
+-- Every note's headings, keyed by the path `note_rel_paths` gives -- or nil when
+-- ripgrep cannot answer and the caller has to read the files itself.
 --
--- Filenames are thin ground for this on their own. A collection can be written
--- entirely in Japanese and still be filed under ASCII names -- of the 464 notes
--- this was measured against, 32 had any Japanese in the filename while 135
--- carried it in their headings, 1654 headings' worth. Matching paths only, the
--- filter looked broken: it ran, it narrowed, and it found almost nothing.
---
--- Headings rather than the whole body, because that keeps this picker about
--- finding a *note*. Searching the body is what `:FzfKastenSearchContent` is.
---
--- Costs about 40ms across those 464 notes, and only while a filter is active.
---- @param filter string a `\m` Vim regex, or nil for everything
---- @return string[] paths relative to `home`
-local function notes_matching(filter)
-    local scan_headings = (config.options.romaji or {}).headings ~= false
-    local home = config.options.home
-    local shown = {}
-    for _, rel in ipairs(note_rel_paths()) do
-        local hit = romaji.matches(rel, filter)
-        if not hit and scan_headings then
-            local ok, lines = pcall(vim.fn.readfile, utils.join_path(home, rel))
-            for _, line in ipairs(ok and lines or {}) do
-                if line:match("^#+%s+%S") and romaji.matches(line, filter) then
-                    hit = true
-                    break
-                end
-            end
+-- One rg pass over the collection instead of `readfile` per note. Same reason as
+-- above, and the same shape of number: 20ms for 491 files here, 3.5 *seconds* on
+-- WSL2. `--heading` groups the matches under the filename and separates the
+-- groups with a blank line, which parses without ambiguity -- a match can never
+-- be blank, since the pattern requires a non-space after the hashes.
+local function headings_by_path()
+    local found = rg_in_home({
+        "rg", "--no-messages", "--no-ignore-vcs", "--heading", "--no-line-number",
+        "--color", "never", "--glob", "*." .. config.options.extension,
+        "-e", [[^#+\s+\S]],
+    })
+    if not found then return nil end
+
+    local by_path, current = {}, nil
+    for _, line in ipairs(found) do
+        if line == "" then
+            current = nil
+        elseif current == nil then
+            current = line
+            by_path[current] = {}
+        else
+            table.insert(by_path[current], line)
         end
-        if hit then shown[#shown + 1] = rel end
     end
-    return shown
+    return by_path
+end
+
+-- The headings of one note, for when ripgrep is not there to have read them all.
+local function headings_of(rel)
+    local ok, lines = pcall(vim.fn.readfile, utils.join_path(config.options.home, rel))
+    local found = {}
+    for _, line in ipairs(ok and lines or {}) do
+        if line:match("^#+%s+%S") then found[#found + 1] = line end
+    end
+    return found
 end
 
 -- Everything the note finder matches a note against: its path, and its own
 -- headings unless `romaji.headings` says otherwise. Built once when the picker
--- opens -- about 40ms over 464 notes -- and reused for every keystroke after
--- that, which is what makes matching on each keystroke affordable at all.
+-- opens -- 16ms over 491 notes -- and reused for every keystroke after that,
+-- which is what makes matching on each keystroke affordable at all.
+--
+-- Headings and not the whole body, because that keeps this picker about finding
+-- a *note*. Searching the body is what `:FzfKastenSearchContent` is.
+--
+-- Matching against headings at all is what makes romaji narrowing worth having:
+-- measured against 464 real notes, 32 had any Japanese in the filename while 135
+-- carried it in their headings, 1654 headings' worth. Matching paths only, the
+-- filter looked broken -- it ran, it narrowed, and it found almost nothing.
 --- @return { rel: string, text: string }[]
 local function note_index()
     local scan_headings = (config.options.romaji or {}).headings ~= false
-    local home = config.options.home
+    local rels = note_rel_paths()
+    local headings = scan_headings and headings_by_path() or nil
+
     local index = {}
-    for _, rel in ipairs(note_rel_paths()) do
+    for _, rel in ipairs(rels) do
         local text = rel
         if scan_headings then
-            local ok, lines = pcall(vim.fn.readfile, utils.join_path(home, rel))
-            local parts = { rel }
-            for _, line in ipairs(ok and lines or {}) do
-                if line:match("^#+%s+%S") then parts[#parts + 1] = line end
+            -- `headings` is nil only when rg could not answer; then each note is
+            -- read here, which is what this used to do for all of them.
+            local found = headings and (headings[rel] or {}) or headings_of(rel)
+            if #found > 0 then
+                text = rel .. "\n" .. table.concat(found, "\n")
             end
-            text = table.concat(parts, "\n")
         end
         index[#index + 1] = { rel = rel, text = text }
     end
     return index
 end
 
--- fzf's own matcher, run in batch.
+-- Notes the romaji filter matches, by path or by their own headings -- the same
+-- ground `note_index` lays out, so the link inserter and the finder agree on
+-- what a romaji query reaches.
+--- @param filter string a `\m` Vim regex, or nil for everything
+--- @return string[] paths relative to `home`
+local function notes_matching(filter)
+    local shown = {}
+    for _, entry in ipairs(note_index()) do
+        if romaji.matches(entry.text, filter) then shown[#shown + 1] = entry.rel end
+    end
+    return shown
+end
+
+-- Neovim's own fuzzy matcher, in this process.
 --
 -- A live picker has to turn fzf's matching off (`--disabled`): otherwise fzf
 -- would filter our already-filtered list by the raw query and throw away
 -- everything a romaji query had found. That leaves ordinary typing needing a
--- fuzzy matcher of its own -- and `fzf --filter` is fzf's, so `nvmcfg` still
--- finds `nvim/config/init.lua`, ranked the same way, rather than by whatever
--- approximation of fzf a plugin author writes. About 4ms over 464 entries.
-local function fzf_filter(list, query)
-    local out = vim.fn.systemlist({ "fzf", "--filter", query }, list)
-    -- 1 is "nothing matched"; anything above it is fzf failing, and showing
-    -- everything is a better answer to that than showing nothing.
-    if vim.v.shell_error > 1 then return list end
-    return out
+-- fuzzy matcher of its own.
+--
+-- This was `fzf --filter`, on the reasoning that fzf's matcher should be fzf's
+-- and not an approximation of it by a plugin author. What that reasoning costs
+-- is a process per keystroke: 4.5ms here, 166ms on the WSL2 machine this is also
+-- used from, on top of the process fzf-lua already spawns to ask us -- which is
+-- typing into a finder that answers a fifth of a second late. `matchfuzzy` is C,
+-- in process, 0.2ms, and agrees with `fzf --filter` on the queries people type:
+-- `nvmcfg` finds `nvim/config/init.lua.md`, `nvim conf` still ANDs its words.
+--
+-- What it does not have is fzf's operators -- `'exact`, `!not`, `^prefix`,
+-- `$suffix` -- which now match as the literal characters they are.
+local function fuzzy_filter(list, query)
+    -- Raises on an invalid argument rather than returning nothing; showing
+    -- everything is a better answer to that than an empty picker.
+    local ok, matched = pcall(vim.fn.matchfuzzy, list, query)
+    if not ok then return list end
+    return matched
 end
 
 -- A query beginning with this is romaji: `/kaigi` matches 会議.
@@ -129,7 +206,7 @@ local function notes_for_query(index, query)
     local all = {}
     for _, entry in ipairs(index) do all[#all + 1] = entry.rel end
     if query == "" then return all end
-    return fzf_filter(all, query)
+    return fuzzy_filter(all, query)
 end
 
 -- Says the `/` is there, and what it does, in the one place you are looking

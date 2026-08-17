@@ -32,12 +32,18 @@ pattern does not fail -- it matches nothing.
 
 The note finder uses `/` rather than <alt-/>: fzf matches literally and
 cannot be taught Japanese, so the matching happens outside it, which means
-fzf's own matching is off there and plain queries go through `fzf --filter`
--- fzf's matcher, so ranking is unchanged. The `/` token is borrowed from
-fzf-jp-extension, which patches it into fzf itself.
+fzf's own matching is off there and plain queries go through
+`vim.fn.matchfuzzy()`. The `/` token is borrowed from fzf-jp-extension,
+which patches it into fzf itself.
 
-`ttyskk` takes cmd, limit and timeout under `romaji.ttyskk`.
-`:checkhealth fzfkasten` reports which backend answered.
+Everything on that path is measured in keystrokes, so it is kept out of
+other processes: the note list comes from one `rg --files` pass and the
+headings from one more, and the per-keystroke match is in this process.
+
+`ttyskk` takes cmd, limit and timeout under `romaji.ttyskk`. Build its
+reading index once with `ttyskk migemo --build-index` -- without it every
+query re-reads the SKK dictionaries (270ms rather than 20ms).
+`:checkhealth fzfkasten` reports which backend answered and how fast.
 
 COMMANDS
 
