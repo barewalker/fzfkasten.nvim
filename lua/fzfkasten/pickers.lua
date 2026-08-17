@@ -128,8 +128,11 @@ end
 -- text of a note already read that can lag, which costs at most a romaji query
 -- that does not reach a heading it should. Two things bound it: writing a note in
 -- this Neovim drops that note from the cache, and the whole cache is thrown away
--- after this long.
-local STALE_AFTER = 300
+-- after `find.headings_stale_after` seconds (0 to keep nothing).
+local function stale_after()
+    local find = config.options.find or {}
+    return find.headings_stale_after or 300
+end
 
 local cache = { home = nil, headings = {}, warm = false, read_at = 0 }
 local watching = false
@@ -155,7 +158,7 @@ end
 --- @return { headings: table<string, string[]>, warm: boolean }
 local function cached_headings()
     watch_writes()
-    local aged = (vim.uv.hrtime() / 1e6 - cache.read_at) / 1000 > STALE_AFTER
+    local aged = (vim.uv.hrtime() / 1e6 - cache.read_at) / 1000 >= stale_after()
     if cache.home ~= config.options.home or aged then
         cache = { home = config.options.home, headings = {}, warm = false, read_at = vim.uv.hrtime() / 1e6 }
     end

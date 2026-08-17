@@ -44,6 +44,24 @@ M.defaults = {
        timeout = 5000,
      },
    },
+   find = {
+     -- How long the note finder keeps the headings it has read, in seconds.
+     --
+     -- Reading them is what opening the finder costs: 462ms over 495 notes on a
+     -- WSL2 laptop against 42ms once they are cached, and 14ms / 6ms on a Linux
+     -- filesystem. So they are kept, and only notes never seen before are read.
+     --
+     -- What that trades away is a heading edited by something that is not this
+     -- Neovim -- a git pull, another machine, an agent writing to a note in a
+     -- pane. The file *list* is walked every time, so a new note is never
+     -- missed; it is the heading text of a note already read that can lag, and
+     -- at worst a romaji query does not reach a heading it should. Writing the
+     -- note in this Neovim drops it from the cache at once, whatever this says.
+     --
+     -- Raise it on a machine where reading the collection is expensive; set it
+     -- to 0 to read the headings on every open, as the finder used to.
+     headings_stale_after = 300,
+   },
    patterns = {
      tag = [[#([%w_-]+)]],
      link = [=[%[%[(.-)%]%]]=],
@@ -356,14 +374,22 @@ M.defaults = {
   -- e.g. retro = { note = "weekly", text = "/my-weekly-retro" }
   prompts = {},
  },
+ -- Passed through to fzf-lua for every picker fzfkasten opens, so anything
+ -- fzf-lua takes can go here: `winopts`, `fzf_opts`, `previewer`, and `keymap`.
+ --
+ -- Keys belong in `keymap.fzf` (fzf's own keys) or `keymap.builtin` (the ones
+ -- Neovim handles) and *not* in `fzf_opts["--bind"]`, which fzf-lua overwrites
+ -- with whatever it builds from `keymap` -- a bind written there is silently
+ -- dropped. `ctrl-h:backward-delete-char` used to be here, doing nothing; fzf
+ -- binds ctrl-h to backward-delete-char itself anyway.
+ --
+ -- fzf-lua merges these over its own defaults per key, so naming one key keeps
+ -- the rest -- and keeps the binds the note finder adds for `/kaigi`.
  fzf = {
   winopts = {
    height = 0.85,
    width = 0.80,
    preview = { layout = "vertical" },
-  },
-  fzf_opts = {
-    ["--bind"] = "ctrl-h:backward-delete-char",
   },
   files = {
    previewer = "builtin",

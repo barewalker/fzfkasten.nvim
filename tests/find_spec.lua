@@ -326,6 +326,25 @@ describe("the note finder's heading cache", function()
         assert.are.same({ "plan.md" }, shown("/tanaka"))
     end)
 
+    -- How long that takes is the caller's to set, because what it is worth
+    -- depends on what reading the collection costs on the machine.
+    it("takes how long to keep them from the configuration", function()
+        setup({ find = { headings_stale_after = 60 } })
+        shown("")
+        note("plan.md", { "# Plan", "# 田中さん" })
+        t.age_index(90)
+        assert.are.same({ "plan.md" }, shown("/tanaka"))
+    end)
+
+    -- ...including not keeping them at all, which is what the finder did before
+    -- there was a cache.
+    it("reads them every time when told to keep nothing", function()
+        setup({ find = { headings_stale_after = 0 } })
+        shown("")
+        note("plan.md", { "# Plan", "# 田中さん" })
+        assert.are.same({ "plan.md" }, shown("/tanaka"))
+    end)
+
     -- ...and immediately when the write is one it could see.
     it("sees a heading written from a buffer in this Neovim", function()
         vim.cmd.edit(home .. "/plan.md")

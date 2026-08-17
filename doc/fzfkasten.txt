@@ -45,7 +45,12 @@ Opening the picker walks the collection twice, at the same time -- once for
 the file list, once for every heading. The headings are kept between
 openings, so opening it again costs the file walk alone. A new note is
 never missed, since the list is walked every time; a heading edited outside
-this Neovim lags until the note is written here or five minutes pass.
+this Neovim lags until the note is written here or `find.headings_stale_after`
+seconds pass (default 300, 0 to read them every time).
+
+Options under `fzf` are passed to fzf-lua for every picker. Keys go in
+`fzf.keymap.fzf` or `fzf.keymap.builtin`, per key; a bind written in
+`fzf_opts["--bind"]` is dropped, since fzf-lua rebuilds that flag itself.
 
 `ttyskk` takes cmd, limit and timeout under `romaji.ttyskk`. Build its
 reading index once with `ttyskk migemo --build-index` -- without it every
