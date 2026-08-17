@@ -5,22 +5,31 @@ local buffer = require('fzfkasten.buffer') -- Opens notes and applies per-buffer
 local romaji = require('fzfkasten.romaji') -- Optional romaji narrowing (/ prefix, <alt-/>)
 local M = {}
 
--- Run ripgrep in the notes directory, or nil when it could not be asked.
+-- Start ripgrep in the notes directory. Started rather than run, because the
+-- index needs two passes over the same tree and they do not need each other:
+-- both are set going before either is waited on. In series on WSL2 they cost
+-- 531ms, which is the whole of what opening the finder costs there.
 --
 -- pcall because `vim.system` raises rather than returning a status when the cwd
 -- is not there, and a `home` that does not exist is a configuration mistake
 -- `:checkhealth` already names -- the pickers' job is to come up empty, as they
 -- did when this was a glob, not to throw at whoever opened one.
---- @return string[]|nil lines of rg's stdout
-local function rg_in_home(args)
+--- @return vim.SystemObj|nil
+local function rg_start(args)
     if vim.fn.executable("rg") ~= 1 then return nil end
-    local ok, rg = pcall(function()
-        return vim.system(args, { cwd = config.options.home, text = true }):wait()
-    end)
+    local ok, handle = pcall(vim.system, args, { cwd = config.options.home, text = true })
+    if not ok then return nil end
+    return handle
+end
+
+--- @return string[]|nil lines of rg's stdout, nil when it could not answer
+local function rg_lines(handle)
+    if not handle then return nil end
+    local rg = handle:wait()
     -- 1 is "nothing found", a legitimate answer for an empty collection; above
     -- that rg failed, and reading the files ourselves answers that better than
     -- an empty picker does.
-    if not ok or rg.code > 1 then return nil end
+    if rg.code > 1 then return nil end
     return vim.split(rg.stdout or "", "\n", { plain = true })
 end
 
@@ -39,13 +48,16 @@ end
 --
 -- `--no-ignore-vcs` because the glob showed every note; a collection that
 -- gitignores a directory of notes would otherwise find them quietly gone.
-local function note_rel_paths()
+local function rg_files_args()
+    return { "rg", "--files", "--no-messages", "--no-ignore-vcs",
+        "--glob", "*." .. config.options.extension }
+end
+
+--- @param listed string[]|nil what `rg --files` said, or nil to walk it here
+local function note_rel_paths(listed)
     local home = config.options.home
     local ext = config.options.extension
 
-    local listed = rg_in_home({
-        "rg", "--files", "--no-messages", "--no-ignore-vcs", "--glob", "*." .. ext,
-    })
     if listed then
         return vim.tbl_filter(function(rel) return rel ~= "" end, listed)
     end
@@ -66,12 +78,14 @@ end
 -- WSL2. `--heading` groups the matches under the filename and separates the
 -- groups with a blank line, which parses without ambiguity -- a match can never
 -- be blank, since the pattern requires a non-space after the hashes.
-local function headings_by_path()
-    local found = rg_in_home({
-        "rg", "--no-messages", "--no-ignore-vcs", "--heading", "--no-line-number",
+local function rg_headings_args()
+    return { "rg", "--no-messages", "--no-ignore-vcs", "--heading", "--no-line-number",
         "--color", "never", "--glob", "*." .. config.options.extension,
-        "-e", [[^#+\s+\S]],
-    })
+        "-e", [[^#+\s+\S]] }
+end
+
+--- @param found string[]|nil what the heading pass said, or nil when it could not
+local function headings_by_path(found)
     if not found then return nil end
 
     local by_path, current = {}, nil
@@ -113,8 +127,14 @@ end
 --- @return { rel: string, text: string }[]
 local function note_index()
     local scan_headings = (config.options.romaji or {}).headings ~= false
-    local rels = note_rel_paths()
-    local headings = scan_headings and headings_by_path() or nil
+
+    -- Both walks are set going before either is read: they are independent, and
+    -- on a machine where walking a tree is expensive that is most of the wait.
+    local listing = rg_start(rg_files_args())
+    local scan = scan_headings and rg_start(rg_headings_args()) or nil
+
+    local rels = note_rel_paths(rg_lines(listing))
+    local headings = scan_headings and headings_by_path(rg_lines(scan)) or nil
 
     local index = {}
     for _, rel in ipairs(rels) do
