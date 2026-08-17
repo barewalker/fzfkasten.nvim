@@ -127,7 +127,10 @@ Here is the default configuration. You can override any of these settings in the
     },
     prompts = {},    -- named strings sent with :FzfKastenClaudePrompt <name>
   },
-  fzf = {
+  find = {
+    headings_stale_after = 300,  -- seconds the note finder keeps the headings it read
+  },
+  fzf = {                        -- passed through to fzf-lua for every picker
     winopts = {
       height = 0.85,
       width = 0.80,
@@ -136,9 +139,13 @@ Here is the default configuration. You can override any of these settings in the
     files = {
       previewer = "builtin",
     },
+    -- keys go here, per key, merged over fzf-lua's own defaults:
+    -- keymap = { fzf = { ["ctrl-h"] = "backward-delete-char" } },
   },
 }
 ```
+
+Anything `fzf-lua` accepts can go under `fzf`. Keys belong in `keymap.fzf` (fzf's own) or `keymap.builtin` (the ones Neovim handles) and **not** in `fzf_opts["--bind"]` — fzf-lua rebuilds that flag from `keymap` and a bind written there is silently dropped.
 
 ## Note buffer behaviour
 
@@ -543,7 +550,14 @@ Over 491 notes, and over the same collection on WSL2 on a corporate laptop, wher
 
 The WSL2 column is why it is written this way. `vim.fn.glob("**/*.md")` — which walks the tree from inside Neovim, one directory at a time, `.git` included — took **6.2 seconds** there against 11 ms on Linux; reading each note for its headings took another 3.5 s; and a `fzf --filter` per keystroke cost 166 ms against 4.5 ms. Nothing about that setup was unhealthy and none of it was visible — the picker simply opened ten seconds later and then answered a fifth of a second behind the keyboard.
 
-What keeping the headings trades away is a heading edited by something that is not this Neovim: a `git pull`, another machine, Claude writing to a note in a pane. The file *list* is walked every time, so a **new note is never missed**; it is the heading text of a note already read that can lag, and at worst a romaji query does not reach a heading it should. Writing the note in this Neovim drops it from the cache at once, and the whole cache is thrown away after five minutes.
+What keeping the headings trades away is a heading edited by something that is not this Neovim: a `git pull`, another machine, Claude writing to a note in a pane. The file *list* is walked every time, so a **new note is never missed**; it is the heading text of a note already read that can lag, and at worst a romaji query does not reach a heading it should. Writing the note in this Neovim drops it from the cache at once, and the whole cache is thrown away after `find.headings_stale_after` seconds:
+
+```lua
+find = {
+  headings_stale_after = 300,  -- raise it where reading the collection is slow
+                               -- (455ms vs 42ms on WSL2); 0 reads them every time
+}
+```
 
 The romaji backend is asked once per keystroke while a `/` query is being typed, so its speed is the typing latency there. `:checkhealth fzfkasten` times it and says so.
 
