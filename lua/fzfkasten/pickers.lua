@@ -79,8 +79,11 @@ end
 -- groups with a blank line, which parses without ambiguity -- a match can never
 -- be blank, since the pattern requires a non-space after the hashes.
 local function rg_headings_args()
-    return { "rg", "--no-messages", "--no-ignore-vcs", "--heading", "--no-line-number",
-        "--color", "never", "--glob", "*." .. config.options.extension,
+    -- `--with-filename` explicitly: rg leaves the name out when it was given
+    -- exactly one path, which is what the cache asks for when a single note has
+    -- been written -- and then the first heading is read as the filename.
+    return { "rg", "--no-messages", "--no-ignore-vcs", "--heading", "--with-filename",
+        "--no-line-number", "--color", "never", "--glob", "*." .. config.options.extension,
         "-e", [[^#+\s+\S]] }
 end
 
@@ -112,10 +115,57 @@ local function headings_of(rel)
     return found
 end
 
+-- Headings already read, kept between openings of the picker.
+--
+-- Reading them is what opening the finder costs -- 455ms over 494 notes on the
+-- WSL2 laptop, against 10ms here -- and almost nothing about them has changed
+-- since the last time. So they are kept, and the passes above only ask about
+-- notes this has never seen.
+--
+-- What that trades away is a heading edited by something other than this Neovim:
+-- a `git pull`, another machine, or Claude writing to a note in a pane. The file
+-- *list* is walked every time, so a new note is never missed; it is the heading
+-- text of a note already read that can lag, which costs at most a romaji query
+-- that does not reach a heading it should. Two things bound it: writing a note in
+-- this Neovim drops that note from the cache, and the whole cache is thrown away
+-- after this long.
+local STALE_AFTER = 300
+
+local cache = { home = nil, headings = {}, warm = false, read_at = 0 }
+local watching = false
+
+-- A note written in this Neovim is a heading edit we *can* see, so see it.
+local function watch_writes()
+    if watching then return end
+    watching = true
+    vim.api.nvim_create_autocmd("BufWritePost", {
+        group = vim.api.nvim_create_augroup("FzfkastenNoteIndex", { clear = true }),
+        callback = function(ev)
+            local home = config.options.home
+            if not home or home == "" then return end
+            local written = vim.fn.fnamemodify(ev.file or "", ":p")
+            local prefix = home:gsub("/$", "") .. "/"
+            if vim.startswith(written, prefix) then
+                cache.headings[written:sub(#prefix + 1)] = nil
+            end
+        end,
+    })
+end
+
+--- @return { headings: table<string, string[]>, warm: boolean }
+local function cached_headings()
+    watch_writes()
+    local aged = (vim.uv.hrtime() / 1e6 - cache.read_at) / 1000 > STALE_AFTER
+    if cache.home ~= config.options.home or aged then
+        cache = { home = config.options.home, headings = {}, warm = false, read_at = vim.uv.hrtime() / 1e6 }
+    end
+    return cache
+end
+
 -- Everything the note finder matches a note against: its path, and its own
--- headings unless `romaji.headings` says otherwise. Built once when the picker
--- opens -- 16ms over 491 notes -- and reused for every keystroke after that,
--- which is what makes matching on each keystroke affordable at all.
+-- headings unless `romaji.headings` says otherwise. Built when the picker opens
+-- and reused for every keystroke after that, which is what makes matching on
+-- each keystroke affordable at all.
 --
 -- Headings and not the whole body, because that keeps this picker about finding
 -- a *note*. Searching the body is what `:FzfKastenSearchContent` is.
@@ -127,22 +177,56 @@ end
 --- @return { rel: string, text: string }[]
 local function note_index()
     local scan_headings = (config.options.romaji or {}).headings ~= false
+    local known = scan_headings and cached_headings() or nil
 
-    -- Both walks are set going before either is read: they are independent, and
-    -- on a machine where walking a tree is expensive that is most of the wait.
+    -- The list is walked every time: it is the cheap half, and it is the half
+    -- that must be right -- a note written a moment ago has to be findable.
     local listing = rg_start(rg_files_args())
-    local scan = scan_headings and rg_start(rg_headings_args()) or nil
+
+    -- The headings are the expensive half, so only notes the cache has never
+    -- read are read. A cold cache asks about the whole collection at once, which
+    -- is one rg rather than 494; a warm one usually asks about nothing, and the
+    -- second pass does not happen at all.
+    local scan
+    if scan_headings and not known.warm then
+        scan = rg_start(rg_headings_args())
+    end
 
     local rels = note_rel_paths(rg_lines(listing))
-    local headings = scan_headings and headings_by_path(rg_lines(scan)) or nil
+
+    if scan_headings and known.warm then
+        local unread = {}
+        for _, rel in ipairs(rels) do
+            if not known.headings[rel] then unread[#unread + 1] = rel end
+        end
+        if #unread > 0 then
+            local args = rg_headings_args()
+            args[#args + 1] = "--"
+            vim.list_extend(args, unread)
+            scan = rg_start(args)
+        end
+    end
+
+    if scan_headings then
+        local scanned = headings_by_path(rg_lines(scan))
+        if scanned then
+            for rel, found in pairs(scanned) do known.headings[rel] = found end
+            -- A note with no headings has to be remembered as such, or it is a
+            -- miss on every open and the cache never warms for it.
+            for _, rel in ipairs(rels) do
+                known.headings[rel] = known.headings[rel] or {}
+            end
+            known.warm = true
+        end
+    end
 
     local index = {}
     for _, rel in ipairs(rels) do
         local text = rel
         if scan_headings then
-            -- `headings` is nil only when rg could not answer; then each note is
-            -- read here, which is what this used to do for all of them.
-            local found = headings and (headings[rel] or {}) or headings_of(rel)
+            -- Nothing cached and no rg to ask means reading the note here, which
+            -- is what this used to do for every note on every open.
+            local found = known.headings[rel] or headings_of(rel)
             if #found > 0 then
                 text = rel .. "\n" .. table.concat(found, "\n")
             end
@@ -236,6 +320,117 @@ local function find_header()
     return "prefix / for romaji:  /kaigi → 会議"
 end
 
+-- fzf's version, asked once. The finder's fast path is built out of `transform`,
+-- which arrived in 0.45; below that there is nothing to check for again.
+local fzf_version
+local function fzf_at_least(major, minor)
+    if fzf_version == nil then
+        local first = vim.fn.executable("fzf") == 1
+            and (vim.fn.systemlist({ "fzf", "--version" })[1] or "") or ""
+        local a, b = first:match("(%d+)%.(%d+)")
+        fzf_version = a and { tonumber(a), tonumber(b) } or false
+    end
+    if not fzf_version then return false end
+    if fzf_version[1] ~= major then return fzf_version[1] > major end
+    return fzf_version[2] >= minor
+end
+
+-- Where the shell side of the finder keeps what it needs. One directory per
+-- Neovim, inside its own temp directory, so it goes when Neovim goes.
+local shell_home
+
+-- Hand fzf everything it needs to narrow by romaji without us.
+--
+-- The live picker asks Neovim on every keystroke, and asking costs a process:
+-- fzf-lua spawns `nvim -u NONE -l rpc.lua` to do it, 7ms here and 68ms on the
+-- WSL2 laptop, for a query that in the ordinary case fzf could have matched
+-- itself. So in the ordinary case, let it.
+--
+--   * fzf keeps its own matcher (no `--disabled`), so plain typing leaves this
+--     process entirely alone -- no reload, no spawn, and fzf's own operators
+--     (`'exact`, `!not`, `^prefix`) work again, which the Lua matcher had lost.
+--   * `change` starts unbound, so nothing runs per keystroke at all.
+--   * `/` on an empty query rebinds it. From then on each keystroke asks a
+--     three-line shell script whether the query is still romaji: if it is, fzf
+--     reloads from the migemo and `search()` clears its own matching so the
+--     reloaded list survives; if it is not, `change` is unbound again and the
+--     full list comes back. Deleting the `/` returns to fzf's matcher, and
+--     nothing is left running.
+--   * a `/` typed inside a query is just a `/`, which paths are full of.
+--
+-- Returns the binds, or nil when this cannot be done here -- an old fzf, no rg,
+-- or a backend that only exists inside Neovim (kensaku runs on denops, and a
+-- backend you passed as a table is Lua). The live picker answers those.
+--- @return table<string, string>|nil
+local function shell_binds(index)
+    local migemo = romaji.rg_command()
+    if not migemo or vim.fn.executable("rg") ~= 1 or not fzf_at_least(0, 45) then
+        return nil
+    end
+
+    if not shell_home then
+        shell_home = vim.fn.tempname()
+        vim.fn.mkdir(shell_home, "p")
+    end
+    -- Nothing in here may need quoting when a shell script names it, and
+    -- Neovim's temp names never do -- but a check beats a picker that fails in
+    -- a way only fzf can see.
+    if shell_home:match("[%s'\"$`]") then return nil end
+
+    local lines = {}
+    for _, entry in ipairs(index) do
+        -- One line per note: the path, then everything it is matched against.
+        -- Tabs would split the line where it must not split.
+        lines[#lines + 1] = entry.rel .. "\t" .. entry.text:gsub("[\t\n]", " ")
+    end
+    local tsv = shell_home .. "/index.tsv"
+    vim.fn.writefile(lines, tsv)
+
+    local escaped = {}
+    for _, word in ipairs(migemo) do escaped[#escaped + 1] = vim.fn.shellescape(word) end
+    local romaji_sh = shell_home .. "/romaji.sh"
+    vim.fn.writefile({
+        "#!/bin/sh",
+        "# Written by fzfkasten. Narrows the note index by the romaji in $1.",
+        "# Anything it cannot answer shows every note, because a picker that",
+        "# empties itself reads as a filter that found nothing.",
+        'index="$(dirname "$0")/index.tsv"',
+        'all() { cut -f1 "$index"; }',
+        'q=${1#/}',
+        '[ -n "$q" ] || { all; exit 0; }',
+        're=$(' .. table.concat(escaped, " ") .. ' -- "$q" 2>/dev/null) || { all; exit 0; }',
+        '[ -n "$re" ] || { all; exit 0; }',
+        'rg -N --no-heading --color never -e "$re" "$index" | cut -f1',
+    }, romaji_sh)
+
+    local change_sh = shell_home .. "/change.sh"
+    vim.fn.writefile({
+        "#!/bin/sh",
+        "# Written by fzfkasten. Tells fzf what a changed query means: romaji",
+        "# while it starts with a slash, and fzf's own matching once it does not.",
+        'dir=$(dirname "$0")',
+        'case "$1" in',
+        "  /*) echo \"search()+reload:'$dir/romaji.sh' {q}\" ;;",
+        -- No `search()` here on purpose: fzf has already searched for the new
+        -- query by the time this runs, and setting it again from `{q}` sets it
+        -- to the *quoted* query, which matches nothing (measured).
+        "  *)  echo \"unbind(change)+reload:cut -f1 '$dir/index.tsv'\" ;;",
+        "esac",
+    }, change_sh)
+
+    for _, script in ipairs({ romaji_sh, change_sh }) do
+        vim.fn.setfperm(script, "rwx------")
+    end
+
+    return {
+        -- `+` so this joins whatever fzf-lua binds to `start` rather than
+        -- replacing it.
+        ["start"] = "+unbind(change)",
+        ["change"] = "transform:'" .. change_sh .. "' {q}",
+        ["/"] = "transform:[ -z {q} ] && echo 'rebind(change)+put(/)' || echo 'put(/)'",
+    }
+end
+
 function M.find_notes()
     local function open(selected)
         if not selected or #selected == 0 then return end
@@ -244,14 +439,27 @@ function M.find_notes()
     end
 
     local index = note_index()
-    fzf.fzf_live(function(args) return notes_for_query(index, args[1]) end,
-        vim.tbl_deep_extend("force", config.options.fzf, {
-            cwd = config.options.home,
-            prompt = "Notes> ",
-            previewer = "builtin",
-            fzf_opts = { ["--header"] = find_header() },
-            actions = { ['default'] = open },
-        }))
+    local opts = vim.tbl_deep_extend("force", config.options.fzf, {
+        cwd = config.options.home,
+        prompt = "Notes> ",
+        previewer = "builtin",
+        fzf_opts = { ["--header"] = find_header() },
+        actions = { ['default'] = open },
+    })
+
+    local binds = shell_binds(index)
+    if binds or not romaji.available() then
+        -- A static list with fzf matching on. With no romaji backend there is
+        -- nothing to be live *for*, and `/` is only a character again.
+        local paths = {}
+        for _, entry in ipairs(index) do paths[#paths + 1] = entry.rel end
+        if binds then
+            opts.keymap = vim.tbl_deep_extend("force", opts.keymap or {}, { fzf = binds })
+        end
+        return fzf.fzf_exec(paths, opts)
+    end
+
+    fzf.fzf_live(function(args) return notes_for_query(index, args[1]) end, opts)
 end
 function M.search_tags()
     -- Use a regex that strictly matches #tag
@@ -911,6 +1119,12 @@ M._test = {
     note_index = note_index,
     notes_for_query = notes_for_query,
     find_header = find_header,
+    shell_binds = shell_binds,
+    -- The heading cache lives across pickers, so a case that does not want the
+    -- one the last case warmed says so, and one that wants to see it go stale
+    -- can push it into the past rather than wait five minutes.
+    forget_index = function() cache = { home = nil, headings = {}, warm = false, read_at = 0 } end,
+    age_index = function(seconds) cache.read_at = cache.read_at - seconds * 1000 end,
     link_under_cursor = link_under_cursor,
     get_note_name = get_note_name,
     collect_backlinks = collect_backlinks,

@@ -515,19 +515,37 @@ If your notes are written in Japanese, fzf's own filter needs you to type Japane
 
 The same `<alt-/>` drives link insertion (`:FzfKastenInsert`) and a romaji **content search** in `:FzfKastenSearchContent` — that last one is where it pays off most, since note bodies are mostly Japanese while filenames often are not.
 
-**The note finder does it without a second key.** In `:FzfKastenFindNotes`, a query beginning with `/` is romaji: type `/kaigi` and the list narrows to notes matching 会議. Anything else is ordinary fuzzy matching — `nvmcfg` still finds `nvim/config/init.lua`, `nvim conf` still ANDs its two words. The header says so, with the example rather than a description of one:
+**The note finder does it without a second key.** In `:FzfKastenFindNotes`, a query beginning with `/` is romaji: type `/kaigi` and the list narrows to notes matching 会議. Anything else is fzf's own matching, untouched — `nvmcfg` still finds `nvim/config/init.lua`, and so do `'exact`, `!not` and `^prefix`. The header says so, with the example rather than a description of one:
 
 ```
 prefix / for romaji:  /kaigi → 会議
 ```
 
-The `/` token is borrowed from [fzf-jp-extension](https://github.com/takumayokoo/fzf-jp-extension), which patches it into fzf itself; doing it outside keeps stock fzf. With no backend installed, `/kaigi` simply matches the text `kaigi` and the header stays quiet.
+The `/` token is borrowed from [fzf-jp-extension](https://github.com/takumayokoo/fzf-jp-extension), which patches it into fzf itself; doing it outside keeps stock fzf. With no backend installed the header stays quiet and `/` has no meaning at all — it is a character like any other.
 
-Because fzf's own matching is off while this is in play, everything on the typing path is work fzfkasten does itself, and it is paid again on every keystroke — so none of it leaves this process. The note index comes from two `rg` passes when the picker opens (the file list, then every heading in the collection); matching a plain query is `vim.fn.matchfuzzy()`. Over 491 notes on Linux that is 19 ms to open and 0.3 ms per keystroke.
+**Ordinary typing never leaves fzf.** A plain query is matched by fzf itself, with its own operators — `'exact`, `!not`, `^prefix`, `$suffix` all work, and no process is started for a keystroke. Only a query that *starts* with `/` is romaji, and fzf is told to ask about those and nothing else: `change` is unbound until you type `/` on an empty query, and unbound again the moment the query stops starting with one. A `/` typed inside a query is just a `/`, which paths are full of.
 
-It is written that way because of what the obvious version costs elsewhere. Measured over the same collection on WSL2 on a corporate laptop, `vim.fn.glob("**/*.md")` — which walks the tree from inside Neovim, one directory at a time, `.git` included — took **6.2 seconds** against 11 ms on Linux, and reading each note for its headings took another 3.5 s; a `fzf --filter` per keystroke cost 166 ms there against 4.5 ms. Nothing about that setup is unhealthy, and none of it was visible: the picker simply opened ten seconds later. Handing the walk to `rg`, which goes in parallel and skips dot-directories itself, and keeping the match in process, is what makes the finder usable on a machine like that.
+What answers a `/` query is a script fzfkasten writes next to a copy of the note index, which fzf runs itself: it asks the migemo for a pattern and hands it to `rg`. Neovim is not involved. Two things have to be true for that, and when either is not, the finder falls back to asking Neovim on every keystroke (`vim.fn.matchfuzzy()` for plain queries, the migemo in Lua for romaji):
 
-The other thing on this path is the romaji backend, which is asked once per keystroke while a `/` query is being typed. `:checkhealth fzfkasten` times it and says so.
+- **fzf 0.45 or newer**, for its `transform` action.
+- **a romaji backend fzf can run**, which means ttyskk. kensaku runs on denops and a backend you passed as a table is Lua; neither can be run by a shell.
+
+Opening the picker builds the index: one `rg --files` pass for the list and one `rg` pass for every heading in the collection, started together. The headings are then **kept between openings**, and only notes never seen before are read again — so opening it a second time costs the file walk alone.
+
+Over 491 notes, and over the same collection on WSL2 on a corporate laptop, where all of this was measured:
+
+| | Linux (NVMe) | WSL2 (corporate laptop) |
+|---|---|---|
+| opening it, cold | 15 ms | 455 ms |
+| opening it again | 6 ms | the file walk alone |
+| per keystroke, plain query | 0 | 0 |
+| per keystroke, `/romaji` | 26 ms | 58 ms |
+
+The WSL2 column is why it is written this way. `vim.fn.glob("**/*.md")` — which walks the tree from inside Neovim, one directory at a time, `.git` included — took **6.2 seconds** there against 11 ms on Linux; reading each note for its headings took another 3.5 s; and a `fzf --filter` per keystroke cost 166 ms against 4.5 ms. Nothing about that setup was unhealthy and none of it was visible — the picker simply opened ten seconds later and then answered a fifth of a second behind the keyboard.
+
+What keeping the headings trades away is a heading edited by something that is not this Neovim: a `git pull`, another machine, Claude writing to a note in a pane. The file *list* is walked every time, so a **new note is never missed**; it is the heading text of a note already read that can lag, and at worst a romaji query does not reach a heading it should. Writing the note in this Neovim drops it from the cache at once, and the whole cache is thrown away after five minutes.
+
+The romaji backend is asked once per keystroke while a `/` query is being typed, so its speed is the typing latency there. `:checkhealth fzfkasten` times it and says so.
 
 #### Romaji backends
 

@@ -31,14 +31,21 @@ Vim regex while content search shells out to `rg`, and handing `rg` a Vim
 pattern does not fail -- it matches nothing.
 
 The note finder uses `/` rather than <alt-/>: fzf matches literally and
-cannot be taught Japanese, so the matching happens outside it, which means
-fzf's own matching is off there and plain queries go through
-`vim.fn.matchfuzzy()`. The `/` token is borrowed from fzf-jp-extension,
-which patches it into fzf itself.
+cannot be taught Japanese, so a `/kaigi` query is narrowed outside it. The
+`/` token is borrowed from fzf-jp-extension, which patches it into fzf
+itself.
 
-Everything on that path is measured in keystrokes, so it is kept out of
-other processes: the note list comes from one `rg --files` pass and the
-headings from one more, and the per-keystroke match is in this process.
+Ordinary typing never leaves fzf, and fzf's own operators ('exact, !not,
+^prefix) work. Only a query starting with `/` is asked about: fzf runs a
+script fzfkasten writes, which asks the migemo for a pattern and hands it
+to `rg`. That needs fzf 0.45 (`transform`) and a backend a shell can run,
+i.e. ttyskk; without either, every keystroke asks Neovim instead.
+
+Opening the picker walks the collection twice, at the same time -- once for
+the file list, once for every heading. The headings are kept between
+openings, so opening it again costs the file walk alone. A new note is
+never missed, since the list is walked every time; a heading edited outside
+this Neovim lags until the note is written here or five minutes pass.
 
 `ttyskk` takes cmd, limit and timeout under `romaji.ttyskk`. Build its
 reading index once with `ttyskk migemo --build-index` -- without it every

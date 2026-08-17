@@ -126,6 +126,19 @@ function ttyskk.rg_regex(romaji)
     return ttyskk_run("rg", romaji)
 end
 
+-- ttyskk is a program, so a caller that filters outside Neovim can run it
+-- itself rather than coming back in here for every keystroke. Everything but
+-- the romaji, which the caller appends.
+function ttyskk.rg_command()
+    local opts = ttyskk_opts()
+    local cmd = { opts.cmd or "ttyskk", "migemo", "--flavour", "rg" }
+    if opts.limit then
+        cmd[#cmd + 1] = "--limit"
+        cmd[#cmd + 1] = tostring(opts.limit)
+    end
+    return cmd
+end
+
 -- Choosing one -------------------------------------------------------------
 
 local BACKENDS = { ttyskk = ttyskk, kensaku = kensaku }
@@ -197,6 +210,20 @@ end
 --- and `\|`. Handing it the wrong one does not fail -- it matches nothing.
 function M.rg_regex(romaji)
     return build("rg_regex", romaji)
+end
+
+--- The active backend as a command a shell can run, or nil when it cannot leave
+--- Neovim: kensaku runs on denops, and a backend you passed as a table is Lua.
+---
+--- This is what lets the note finder hand romaji narrowing to fzf and stop
+--- being asked on every keystroke. The romaji is appended to what comes back,
+--- and the answer is an rg-flavour pattern -- the same flavour `rg_regex`
+--- returns, since whoever runs this is not matching in Lua either.
+--- @return string[]|nil
+function M.rg_command()
+    local backend = M.backend()
+    if not backend or not backend.rg_command then return nil end
+    return backend.rg_command()
 end
 
 --- Does `text` match the filter? A nil/empty filter matches everything, so a
