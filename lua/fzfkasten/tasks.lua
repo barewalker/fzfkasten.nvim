@@ -332,6 +332,13 @@ local function parse_task_text(text, o)
             text = text:gsub(cancel.pattern, "")
         end
     end
+    -- The id names the line; it is not part of what the line says. Left in, it
+    -- would trail every task in the picker and the list buffer both.
+    --
+    -- Off before the strikethrough comes off, because the id sits outside it
+    -- (`~~案を作る~~ ^t3k9aa`): a text still carrying one is not wrapped end to
+    -- end, so `unstrike` would find no wrap and leave both markers in the text.
+    text = utils.strip_block_id(text)
     -- After the stamp, which sits outside the strikethrough.
     text = unstrike(vim.trim(text), o.cancel_strike)
 
@@ -359,10 +366,32 @@ local function split_checkbox(line)
     }
 end
 
+-- Keep a line's `^id` at its end, whatever a writer does to the rest of it.
+--
+-- Every writer below either appends (a completion stamp, a due date, a tag) or
+-- wraps the text in a strikethrough. An id left in place would end up in the
+-- middle of the line, or inside the strikethrough -- `~~redraw ^t3k9~~` reads as
+-- though the id were part of what was dropped. Taking it off before the rewrite
+-- and putting it back after means no writer has to know ids exist.
+--
+-- `rewrite` returning something other than a string is a refusal (nil plus a
+-- reason), and is handed back untouched.
+local function keeping_block_id(line, rewrite)
+    local id = utils.block_id(line)
+    if not id then
+        return rewrite(line)
+    end
+    local out, err = rewrite(utils.strip_block_id(line))
+    if type(out) ~= "string" then
+        return out, err
+    end
+    return utils.with_block_id(out, id)
+end
+
 -- Flip a checkbox line between open and done, or nil when the line holds no
 -- checkbox. A cancelled task is refused rather than silently reopened: `- [-]`
 -- is a decision, and there is a command that reverses it.
-local function toggle_line(line)
+local function toggle_line_bare(line)
     local o = config.options.tasks
     local cb = split_checkbox(line)
     if cb and cb.mark == o.marks.cancelled then
@@ -391,6 +420,10 @@ local function toggle_line(line)
     return toggled
 end
 
+local function toggle_line(line)
+    return keeping_block_id(line, toggle_line_bare)
+end
+
 -- Cancel a task, or reopen one already cancelled. Returns the rewritten line,
 -- or nil plus a reason.
 --
@@ -402,7 +435,7 @@ end
 -- The strikethrough goes around the text but inside the priority and the
 -- stamp: `priority` is anchored to the start of the text, so `~~(A) foo~~`
 -- would hide it, and the cancelling is not itself cancelled.
-local function cancel_line(line)
+local function cancel_line_bare(line)
     local o = config.options.tasks
     local cb = split_checkbox(line)
     if not cb then
@@ -445,13 +478,17 @@ local function cancel_line(line)
     return cb.before .. mark .. cb.after .. lead .. kept .. text
 end
 
+local function cancel_line(line)
+    return keeping_block_id(line, cancel_line_bare)
+end
+
 -- Raise a line to a tagged task, or nil when there is nothing to raise it
 -- from (blank line) or nothing left to do (already tagged).
 --
 -- Prose and bare bullets become checkboxes on the way: noticing mid-sentence
 -- that a line is yours to do is exactly when you want one keystroke, not
 -- three edits. The indent is kept so the line stays where it sits in a list.
-local function tag_line(line, tag)
+local function tag_line_bare(line, tag)
     local o = config.options.tasks
     -- Any checkbox, whatever its mark: asking `open`/`done` instead would read
     -- a cancelled task as prose and bullet it a second time.
@@ -469,6 +506,10 @@ local function tag_line(line, tag)
         return nil
     end
     return line:gsub("%s*$", "") .. " #" .. tag
+end
+
+local function tag_line(line, tag)
+    return keeping_block_id(line, function(bare) return tag_line_bare(bare, tag) end)
 end
 
 -- Build the checkbox line for a freshly captured task, or nil when there is
@@ -568,7 +609,7 @@ end
 -- The token goes at the end of the text, past the priority and the tag, so it
 -- reads the way the notes already write it (`(A) redraw #todo due:...`). An
 -- empty date clears it, leaving no dangling space.
-local function due_line(line, date)
+local function due_line_bare(line, date)
     local o = config.options.tasks
     local cb = split_checkbox(line)
     if not cb then
@@ -589,6 +630,10 @@ local function due_line(line, date)
         return nil, "bad date"
     end
     return stripped .. " due:" .. date
+end
+
+local function due_line(line, date)
+    return keeping_block_id(line, function(bare) return due_line_bare(bare, date) end)
 end
 
 -- What a task sorts by: the outermost item it hangs off, or itself when it
