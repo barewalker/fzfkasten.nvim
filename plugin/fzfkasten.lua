@@ -11,6 +11,7 @@ cmd("FzfKastenRenameNote", function() require('fzfkasten').rename_note() end, { 
 cmd("FzfKastenPanel", function() require('fzfkasten').panel() end, { desc = "Fzfkasten: Panel" })
 cmd("FzfKastenFollowLink", function() require('fzfkasten').follow_link() end, { desc = "Fzfkasten: Follow Link" })
 cmd("FzfKastenGotoLink", function() require('fzfkasten').goto_link() end, { desc = "Fzfkasten: Follow link under cursor (gf-style, falls back to native gf)" })
+cmd("FzfKastenYankLink", function() require('fzfkasten').yank_link() end, { desc = "Fzfkasten: Yank a link to the line under the cursor, minting its ^id" })
 cmd("FzfKastenShowBacklinks", function() require('fzfkasten').show_backlinks() end, { desc = "Fzfkasten: Show Backlinks" })
 cmd("FzfKastenLinkTree", function(o)
 	require('fzfkasten').link_tree(tonumber(o.args))

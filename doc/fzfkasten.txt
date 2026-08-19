@@ -112,7 +112,31 @@ COMMANDS
 - FzfKastenFollowLink / FzfKastenGotoLink: Follow the [[wikilink]] under the
   cursor. An anchor puts the cursor on that heading ([[note#Results]] opens
   note at its "## Results"), matched on the heading text, case-insensitively;
-  a heading that is not there opens the note anyway and warns.
+  a heading that is not there opens the note anyway and warns. An anchor
+  starting with ^ names a line rather than a heading ([[note#^t3k9aa]]): the
+  cursor lands on the line carrying that id, wherever in the note it has moved
+  to and however it has been reworded since. See FzfKastenYankLink.
+- FzfKastenYankLink: Yank a link to the line the cursor is on. Mints a ^id at
+  the end of that line if it carries none, writes it into the buffer, and puts
+  [[note#^id]] in the yank registers -- so the note holding a task is where you
+  copy the link from, and the note referring to it is where you paste. An id
+  already there is reused: yanking twice writes the same link twice, not a
+  second id for one line.
+  What it is for is a task that no heading identifies. A meeting note whose
+  "## その他, 議論" holds three unrelated tasks cannot be pointed into with
+  [[note#その他, 議論]] -- that anchor names all three, which is to say none of
+  them.
+  Ids are kept apart from tags deliberately. #qms classifies, and a search for
+  it is meant to return every line about the quality office; ^t3k9aa
+  identifies, and is worth nothing the moment a second line carries it.
+  The id survives the writers -- ticking a task off, cancelling it, setting a
+  due date and tagging it all leave it at the end of the line -- and never
+  reaches the task list, which shows what the task says and not its id.
+  Configure with block_id (length, alphabet, alias, alias_max). block_id.alias,
+  off by default, carries the line's own text into the link
+  ([[note#^t3k9aa|(A) 案を作る]]), cut to alias_max characters. Tags are dropped
+  from an alias either way: an alias carrying #todo would file the note it was
+  pasted into under it too.
 - FzfKastenShowBacklinks: List every line in the collection that links to the
   current note. [[note]], [[note|alias]], [[note#heading]], [[folder/note]] and
   [[note.md]] all count; only

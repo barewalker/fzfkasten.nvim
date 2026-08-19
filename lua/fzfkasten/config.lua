@@ -62,6 +62,33 @@ M.defaults = {
      -- to 0 to read the headings on every open, as the finder used to.
      headings_stale_after = 300,
    },
+   -- A `^id` at the end of a line, so a link can point at that line rather than
+   -- only at the note or the heading above it: `[[note#^t3k9]]`.
+   --
+   -- Kept apart from tags, sigil and all. `#qms` classifies -- it is worth
+   -- carrying on every line about the quality office, and a search for it is
+   -- meant to return all of them. `^t3k9` identifies, and is worth nothing the
+   -- moment a second line carries it. One sigil for both would put the two
+   -- kinds of answer in the same result list.
+   block_id = {
+     -- How many characters `:FzfKastenYankLink` mints. Six out of 36 is 2.2
+     -- billion, which no collection is going to exhaust.
+     length = 6,
+     -- What they are minted from. Lowercase only, so two ids are never the
+     -- same id told apart by case in a search that ignores it.
+     alphabet = "abcdefghijklmnopqrstuvwxyz0123456789",
+     -- Carry the line's own text into the link as an alias:
+     -- `[[note#^t3k9|(A) プロセスの輪切り…]]`. Off because a task line runs
+     -- long, and the link is usually pasted where the surrounding prose
+     -- already says what it refers to. The tags are dropped from the alias
+     -- either way -- see `pickers.link_alias`.
+     alias = false,
+     -- Cut the alias to this many characters, an ellipsis standing for the
+     -- rest. Counted in characters, not bytes, so a Japanese line is cut where
+     -- it looks like it is. nil writes the text whole. Only read when `alias`
+     -- is on.
+     alias_max = 40,
+   },
    patterns = {
      tag = [[#([%w_-]+)]],
      link = [=[%[%[(.-)%]%]]=],

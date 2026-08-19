@@ -21,6 +21,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **Link Insertion**: Interactive link insertion with `[[` trigger.
 - [x] **Follow Link**: Jump to the link under the cursor (or pick from all links in the buffer). Resolves notes recursively across sub-directories, and can create missing notes from a template. Mappable to `gf` with a native-`gf` fallback.
 - [x] **Backlinks**: Find all notes linking to the current note. `[[note]]`, `[[note|alias]]`, `[[note#heading]]`, `[[folder/note]]` and `[[note.md]]` all count as links to `note`; only whole names match, so `[[note-old]]` is not one.
+- [x] **Line links**: `:FzfKastenYankLink` mints a `^id` on the line under the cursor and yanks `[[note#^id]]`, so a link can point at one task inside a note rather than at the note or at the heading over it. Following it lands on that line however it has been reworded since. The id survives ticking the task off, cancelling it and setting a due date, and never shows up in the task list. See [Line links](#line-links).
 - [x] **Link graph**: The whole collection read as a graph, in four pickers — what the note you are in is joined to (both directions, several links out), which notes are joined to nothing, which links point at notes that were never written, and which notes everything converges on. See [The link graph](#the-link-graph).
 - [x] **Rename Note**: Rename a note and retarget every link to it — see [Renaming](#renaming-a-note).
 - [x] **Template Engine**: Simple `{{title}}`, `{{date}}`, and `{{hdate}}` placeholders.
@@ -29,7 +30,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **New Templated Notes**: Create new notes from predefined templates with interactive selection.
 - [x] **Log picker**: One picker (`:FzfKastenLog`) over recent days and weeks — existing notes preview and open, missing dates are created from a template, all in one place.
 - [x] **Claude Code Integration**: Optional. Sends notes and named prompts to the Claude Code running in a herdr or tmux pane — on this machine or over ssh — by typing into it. Disabled by default; see [Claude Code Integration](#claude-code-integration).
-- [x] **Link Aliasing**: `[[note|alias]]` syntax is supported across follow link, backlinks, and rename. Anchors (`[[note#heading]]`) too, and all three read them alike.
+- [x] **Link Aliasing**: `[[note|alias]]` syntax is supported across follow link, backlinks, and rename. Anchors too — `[[note#heading]]` for a section and `[[note#^id]]` for a single line — and all three read them alike.
 - [x] **Filename Sanitization**: Unicode-safe default (preserves CJK) with a user-overridable `transform.sanitize_filename` hook.
 - [x] **Template Placeholders**: Built-in `{{title}} {{date}} {{hdate}} {{year}} {{month}} {{day}} {{week}} {{time}}` plus user-defined entries via `template_placeholders` (string or function values).
 - [x] **Image Preview**: Delegated to `fzf-lua`'s previewer; see the [Image Preview](#image-preview) section for configuration.
@@ -62,6 +63,12 @@ Here is the default configuration. You can override any of these settings in the
   patterns = {
     tag = [[#([%w_-]+)]],
     link = [[%[%[(.-)%]%]],
+  },
+  block_id = {
+    length = 6,
+    alphabet = "abcdefghijklmnopqrstuvwxyz0123456789",
+    alias = false,
+    alias_max = 40,
   },
   notes = {
     daily = {
@@ -220,6 +227,27 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
     { "gf", "<cmd>FzfKastenGotoLink<CR>", ft = "markdown", desc = "Follow wikilink / gf" }
     ```
 
+*   **`:FzfKastenYankLink`**: Yank a link to the line the cursor is on. It mints a `^id` at the end of that line if it carries none, writes it into the buffer, and puts `[[note#^id]]` in the yank registers — so you copy the link from the note that holds the task, and paste it into the note that refers to it. An id already on the line is reused, so yanking twice writes the same link twice rather than a second id.
+
+    Following such a link (`:FzfKastenFollowLink`, or `gf`) puts the cursor on the line carrying that id, wherever it has moved to in the note and however it has been reworded since. This is for a task no heading identifies: a meeting note whose `## その他, 議論` holds three unrelated tasks cannot be pointed into with `[[note#その他, 議論]]`, because that anchor names all three.
+
+    Ids are kept apart from tags deliberately. `#qms` classifies — a search for it is meant to return every line about the quality office. `^t3k9aa` identifies, and is worth nothing the moment a second line carries it.
+
+    The id survives the writers: ticking a task off, cancelling it, setting a due date and tagging it all leave it at the end of the line. It never reaches the task list, which shows what the task says and not its id.
+
+    Configure with `block_id`:
+
+    ```lua
+    block_id = {
+      length = 6,                    -- characters in a minted id
+      alphabet = "abcdefghijklmnopqrstuvwxyz0123456789",
+      alias = false,                 -- carry the line's text into the link
+      alias_max = 40,                -- cutting it to this many characters
+    }
+    ```
+
+    With `alias = true` the link reads `[[note#^t3k9aa|(A) 案を作る]]`. Tags are dropped from an alias either way — one carrying `#todo` would file the note it was pasted into under it too.
+
 *   **`:FzfKastenLinkTree [depth]`**: What the note you are in is joined to, both directions at once, as a tree — its links, the notes linking to it, and theirs. See [The link graph](#the-link-graph).
 
 *   **`:FzfKastenOrphans`** / **`:FzfKastenDeadLinks`** / **`:FzfKastenHubs`**: The same graph read three other ways — notes joined to nothing, links pointing at notes that don't exist, and notes by how much meets there. See [The link graph](#the-link-graph).
@@ -252,6 +280,46 @@ require("fzfkasten").setup({
   },
 })
 ```
+
+### Line links
+
+A link normally points at a note, and an anchor narrows that to a heading. Neither
+is enough for a task written down in the middle of a meeting note: the heading
+above it (`## その他, 議論`) covers three unrelated tasks, so `[[note#その他, 議論]]`
+names all three, which is to say none of them.
+
+`:FzfKastenYankLink`, on the line you want to point at:
+
+```markdown
+- [ ] (A) 案を作り、品証室会議でまとめて提出。 #todo #qms ^715s2o
+```
+
+The `^715s2o` is written into the note and `[[note#^715s2o]]` goes into the yank
+registers, so you copy the link from the note that *holds* the task and paste it
+into the note that *refers* to it. `gf` on the result lands on that line — the id
+is what is matched, so rewording the task or moving it within the note changes
+nothing. An id already on the line is reused: yanking twice gives you the same
+link twice rather than a second id.
+
+**Ids are not tags, and the sigils say so.** `#qms` classifies — a search for it
+is meant to return every line about the quality office. `^715s2o` identifies, and
+is worth nothing the moment a second line carries it.
+
+**The id stays out of the way.** Ticking the task off, cancelling it, setting a
+due date and tagging it all rewrite the line and all leave the id at the end of
+it — a completion stamp appended past it, a strikethrough wrapped around the text
+but not around it. The task list shows what the task says, never its id.
+
+With `block_id.alias` on, the link carries the line's own words:
+
+```markdown
+[[2026-08-17 戦略会議 論点#^715s2o|(A) 案を作り、品証室会議でまとめて提出。]]
+```
+
+cut to `block_id.alias_max` characters (counted in characters, so a Japanese line
+is not cut mid-glyph). Tags are dropped from an alias either way — the tag search
+reads every line in the collection, not only the ones that meant it, so an alias
+carrying `#todo` would file the note it was pasted into under it too.
 
 ## The link graph
 

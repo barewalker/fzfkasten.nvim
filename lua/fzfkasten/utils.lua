@@ -103,6 +103,114 @@ function M.note_name(filepath)
     return filename_with_ext -- No extension, return as is (e.g. "my_note", ".bashrc")
 end
 
+-- A `^id` preceded by whitespace: two characters at least, letters, digits and
+-- hyphens. Two rather than one so that the `^2` of an exponent, which a note
+-- about anything numeric will hold, is not read as an id.
+local BLOCK_ID = "%s%^([%w][%w-]+)%f[%W]"
+
+-- Seeded once, off the monotonic clock. `os.time()` has one-second resolution,
+-- so two ids minted within the same second would come out identical -- which
+-- for something whose whole job is to be unique is the one failure that counts.
+math.randomseed(((vim.uv or vim.loop).hrtime()) % 2147483647)
+
+--- The `^id` a line carries, or nil when it carries none.
+---
+--- Looked for anywhere on the line rather than at its end alone. `with_block_id`
+--- keeps it last, but a note edited on a phone is not bound by that, and an id
+--- that stopped being found because a stamp landed after it would break every
+--- link already pointing at the line.
+--- @param line string
+--- @return string|nil
+function M.block_id(line)
+    if type(line) ~= "string" then
+        return nil
+    end
+    return line:match(BLOCK_ID)
+end
+
+--- `text` without the id it carries, the whitespace in front of it included.
+---
+--- Every occurrence goes, not just the first: a line that somehow grew two ids
+--- would otherwise show one of them in the task list, and an id is not part of
+--- what a task says.
+--- @param text string
+--- @return string
+function M.strip_block_id(text)
+    if type(text) ~= "string" then
+        return text
+    end
+    return (text:gsub(BLOCK_ID, ""))
+end
+
+--- `line` with `id` at its end, replacing any id already there.
+---
+--- At the end always, which is what the writers have to restore after they
+--- rewrite a line: a completion stamp appended afterwards would push the id
+--- into the middle, and a strikethrough would wrap around it -- `~~text ^t3k9~~`
+--- reads as though the id were part of the dropped text.
+--- @param line string
+--- @param id string
+--- @return string
+function M.with_block_id(line, id)
+    local bare = M.strip_block_id(line):gsub("%s+$", "")
+    return bare .. " ^" .. id
+end
+
+--- A fresh id, avoiding anything in `taken`.
+---
+--- Random rather than built from the line's own words. A readable id
+--- (`^qms-slice`) is a name, and a name classifies: sitting next to `#qms` it
+--- would read as a second tag, which is the one thing an id is here not to be.
+--- It also has to be minted without asking anything, since the whole operation
+--- is meant to be one keystroke.
+---
+--- `taken` is a courtesy to the note being edited rather than a real defence --
+--- at 2.2 billion ids the collection is not what runs out.
+--- @param taken table<string, boolean>|nil ids already in use
+--- @return string
+function M.new_block_id(taken)
+    local o = config.options.block_id or {}
+    local alphabet = o.alphabet
+    if type(alphabet) ~= "string" or alphabet == "" then
+        alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+    end
+    local length = tonumber(o.length) or 6
+    if length < 1 then
+        length = 6
+    end
+
+    local function mint()
+        local out = {}
+        for i = 1, length do
+            local at = math.random(#alphabet)
+            out[i] = alphabet:sub(at, at)
+        end
+        return table.concat(out)
+    end
+
+    for _ = 1, 64 do
+        local id = mint()
+        if not (taken and taken[id]) then
+            return id
+        end
+    end
+    return mint()
+end
+
+--- Every id in `lines`, as a set. What `new_block_id` is asked to avoid.
+--- @param lines string[]
+--- @return table<string, boolean>
+function M.block_ids(lines)
+    local seen = {}
+    for _, line in ipairs(lines or {}) do
+        local id = M.block_id(line)
+        if id then
+            seen[id] = true
+        end
+    end
+    return seen
+end
+
 function M.get_template_path(template_name)
     return M.join_path(config.options.home, "templates", template_name)
 end

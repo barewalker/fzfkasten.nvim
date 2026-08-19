@@ -818,9 +818,26 @@ local function create_note_for_link(name)
     vim.bo.filetype = "markdown"
 end
 
--- Put the cursor on the heading an anchor names, in the buffer just opened.
+-- Put the cursor on the line an id names.
 --
--- Matched on the heading's text rather than a slug, because that is what the
+-- The id answers by itself, so nothing here matches on the text: a task reworded
+-- after it was linked to still resolves, which is the whole reason to point at a
+-- line by id rather than at the heading it happens to sit under.
+local function jump_to_block_id(id)
+    for lineno, line in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+        if utils.block_id(line) == id then
+            vim.api.nvim_win_set_cursor(0, { lineno, 0 })
+            vim.cmd("normal! zz")
+            return
+        end
+    end
+    vim.notify("[Fzfkasten] No line '^" .. id .. "' in this note.", vim.log.levels.WARN)
+end
+
+-- Put the cursor where an anchor points, in the buffer just opened: on a line
+-- when the anchor is an id, on the heading it names otherwise.
+--
+-- A heading is matched on its text rather than a slug, because that is what the
 -- link says: `[[note#Results]]` is written by reading the note, not by guessing
 -- how its headings would be encoded. Case-insensitive, since a heading is prose
 -- and nobody recalls its capitalisation.
@@ -830,7 +847,13 @@ end
 -- already suspected it.
 local function jump_to_anchor(anchor)
     if not anchor or anchor == "" then return end
-    local wanted = vim.trim(anchor):lower()
+    local trimmed = vim.trim(anchor)
+    -- `#^id` names a line, anything else names a heading.
+    local id = trimmed:match("^%^(.+)$")
+    if id then
+        return jump_to_block_id(id)
+    end
+    local wanted = trimmed:lower()
     for lineno, line in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
         local heading = line:match("^#+%s+(.-)%s*$")
         if heading and heading:lower() == wanted then
@@ -956,6 +979,105 @@ function M.goto_link()
             vim.notify(tostring(err), vim.log.levels.WARN)
         end
     end
+end
+
+-- Put `text` where `p` will find it. The unnamed register is what `p` reads; `0`
+-- is where a yank also lands, so the link survives a delete made on the way to
+-- wherever it is being pasted. The selection registers are written only when
+-- `clipboard` says the two are meant to be one thing -- writing them unasked
+-- would replace whatever had been copied outside Neovim.
+local function set_yank_registers(text)
+    vim.fn.setreg('"', text, "c")
+    vim.fn.setreg("0", text, "c")
+    for _, which in ipairs(vim.split(vim.o.clipboard or "", ",", { trimempty = true })) do
+        if which == "unnamed" then
+            vim.fn.setreg("*", text, "c")
+        elseif which == "unnamedplus" then
+            vim.fn.setreg("+", text, "c")
+        end
+    end
+end
+
+-- The alias a yanked link carries when `block_id.alias` is on: what the line
+-- says, with everything that is not prose taken off.
+--
+-- The tags go, and that is the part worth explaining. Copying `#todo #qms` into
+-- the daily note would file that note under them too -- the tag search reads
+-- every line, not only the ones that meant it -- so a link pasted for reference
+-- would quietly join the collection's tag index. The brackets and the pipe go
+-- because they are the link's own syntax and would end it early.
+local function link_alias(line)
+    local text = utils.strip_block_id(line)
+
+    -- Off with the checkbox, or the bullet when the line carries no checkbox.
+    local before, mark, after = text:match(config.options.tasks.patterns.toggle)
+    if before then
+        text = text:sub(#before + #mark + #after + 1)
+    else
+        text = text:gsub("^%s*[-*+]%s+", "")
+    end
+
+    text = text:gsub(config.options.patterns.tag, "")
+    text = text:gsub("[%[%]|]", "")
+    text = text:gsub("%s+", " ")
+    text = vim.trim(text)
+
+    -- Cut by character, not by byte: a Japanese line cut by byte ends mid-glyph
+    -- and the alias renders as a broken character.
+    local max = tonumber((config.options.block_id or {}).alias_max)
+    if max and max > 0 and vim.fn.strchars(text) > max then
+        text = vim.trim(vim.fn.strcharpart(text, 0, max)) .. "…"
+    end
+    return text
+end
+
+--- Mint an id for the line the cursor is on, write it there, and leave a link to
+--- that line in the yank registers.
+---
+--- This direction, rather than reaching the line from wherever the link is being
+--- written: the note holding the task is where you are when you decide it is
+--- worth referring to, and the line is already under the cursor. From the other
+--- end it would take a picker over every checkbox in the collection to find the
+--- one you had just been reading.
+---
+--- An id already on the line is reused. Yanking twice is then the same link
+--- twice, not two ids for one line -- and two ids is the state where rewording
+--- the line breaks whichever of the links is not the one you follow.
+function M.yank_block_link()
+    local name = get_note_name(vim.api.nvim_buf_get_name(0))
+    if not name or name == "" then
+        vim.notify("[Fzfkasten] This buffer is not a note, so nothing can link to it.", vim.log.levels.WARN)
+        return
+    end
+
+    local lnum = vim.api.nvim_win_get_cursor(0)[1]
+    local line = vim.api.nvim_buf_get_lines(0, lnum - 1, lnum, false)[1] or ""
+    if vim.trim(line) == "" then
+        vim.notify("[Fzfkasten] Nothing on this line to link to.", vim.log.levels.WARN)
+        return
+    end
+
+    local id = utils.block_id(line)
+    if not id then
+        if not vim.bo.modifiable or vim.bo.readonly then
+            vim.notify("[Fzfkasten] This buffer cannot be written to, so no id can be minted.", vim.log.levels.WARN)
+            return
+        end
+        id = utils.new_block_id(utils.block_ids(vim.api.nvim_buf_get_lines(0, 0, -1, false)))
+        vim.api.nvim_buf_set_lines(0, lnum - 1, lnum, false, { utils.with_block_id(line, id) })
+    end
+
+    local target = name .. "#^" .. id
+    if (config.options.block_id or {}).alias then
+        local alias = link_alias(line)
+        if alias ~= "" then
+            target = target .. "|" .. alias
+        end
+    end
+    local link = "[[" .. target .. "]]"
+
+    set_yank_registers(link)
+    vim.notify("[Fzfkasten] Yanked " .. link)
 end
 
 function M.select_template(callback)

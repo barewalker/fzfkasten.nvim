@@ -11,6 +11,9 @@ M.new_note = function() require('fzfkasten.core').create_new_note_interactively(
 M.panel = function() require('fzfkasten.pickers').panel() end
 M.follow_link = function() require('fzfkasten.pickers').follow_link() end
 M.goto_link = function() require('fzfkasten.pickers').goto_link() end
+-- Mints the id on the line under the cursor, so it writes to the buffer -- the
+-- one entry point here that does.
+M.yank_link = function() require('fzfkasten.pickers').yank_block_link() end
 M.show_backlinks = function() require('fzfkasten.pickers').show_backlinks(vim.api.nvim_buf_get_name(0)) end
 M.rename_note = function() require('fzfkasten.core').rename_note_interactively() end
 M.link_tree = function(depth)
