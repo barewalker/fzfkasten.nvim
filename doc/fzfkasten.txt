@@ -166,6 +166,10 @@ COMMANDS
   it like any open file; switching back re-scans and restores the preview.
   Configure with tasks.list (open = full/split/vsplit/tab, listed, source,
   preview = { enabled, height }, keys).
+  Rows are coloured through highlight groups of their own -- FzfkastenTag
+  (every tag, by patterns.tag), FzfkastenPriority, FzfkastenDue,
+  FzfkastenMeta -- linked to Special / Statement / Constant / Comment by
+  default and restyled with |nvim_set_hl()|.
 - FzfKastenTaskListInbox: The same buffer, showing the inbox.
 - FzfKastenTaskToggle: Toggle the checkbox on the current line.
 - FzfKastenFollowLink / FzfKastenGotoLink: Follow the [[wikilink]] under the
