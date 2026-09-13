@@ -724,3 +724,102 @@ describe("collect: sorting a nested list", function()
             texts({ sort = "priority", reverse = true }))
     end)
 end)
+
+describe("ids minted with the tag", function()
+    local home
+
+    local function open_note(name, lines)
+        local full = home .. "/" .. name
+        vim.fn.mkdir(vim.fn.fnamemodify(full, ":h"), "p")
+        vim.fn.writefile(lines, full)
+        vim.cmd("edit " .. vim.fn.fnameescape(full))
+        return full
+    end
+
+    -- The file-level `setup` pins `home` to a fixed path; these cases write
+    -- real files, so each gets a fresh one.
+    local function setup(opts)
+        config.setup(vim.tbl_deep_extend("force", { home = home }, opts or {}))
+    end
+
+    before_each(function()
+        home = vim.fn.tempname()
+        vim.fn.mkdir(home, "p")
+        setup({ tasks = { require_tag = "todo", always = { "tasks/active.md" } } })
+    end)
+
+    after_each(function()
+        vim.cmd("silent! %bwipeout!")
+        vim.fn.delete(home, "rf")
+    end)
+
+    local function line(n) return vim.api.nvim_buf_get_lines(0, n - 1, n, false)[1] end
+    local utils = require("fzfkasten.utils")
+
+    it("tags without an id by default", function()
+        open_note("a.md", { "do the thing" })
+        tasks.tag({ line1 = 1, line2 = 1 })
+        assert.are.equal("- [ ] do the thing #todo", line(1))
+    end)
+
+    it("mints an id as it tags when block_id.on_tag is set, one per line", function()
+        setup({ tasks = { require_tag = "todo" }, block_id = { on_tag = true } })
+        open_note("a.md", { "one", "two", "three ^kept01" })
+        tasks.tag({ line1 = 1, line2 = 3 })
+        local a, b, c = utils.block_id(line(1)), utils.block_id(line(2)), utils.block_id(line(3))
+        assert.is_string(a)
+        assert.is_string(b)
+        assert.are_not.equal(a, b)
+        assert.are.equal("kept01", c) -- an id already there is kept
+        assert.is_truthy(line(1):match("^%- %[ %] one #todo %^%w+$"))
+        -- One rewrite: one undo puts the whole line back.
+        vim.cmd("normal! u")
+        assert.are.equal("one", line(1))
+    end)
+
+    it("mints an id on a captured task when block_id.on_capture is set", function()
+        setup({ tasks = { require_tag = "todo", always = { "tasks/active.md" } }, block_id = { on_capture = true } })
+        assert.is_true(tasks.add("call back"))
+        local written = vim.fn.readfile(home .. "/tasks/active.md")
+        assert.is_truthy(written[#written]:match("^%- %[ %] call back #todo %^%w+$"))
+    end)
+
+    it("mint_ids gives every tagged task without one an id, and leaves the rest", function()
+        open_note("tasks/active.md", {
+            "---", "title: active", "---",
+            "# Active",
+            "- [ ] tagged #todo",
+            "- [x] done #todo done:2026-09-01 10:00",
+            "- [ ] has one #todo ^abc123",
+            "- [ ] not mine",
+            "prose with a box - [ ] no",
+            "```", "- [ ] in a fence #todo", "```",
+        })
+        local n = tasks.mint_ids()
+        assert.are.equal(2, n)
+        assert.is_truthy(line(5):match("^%- %[ %] tagged #todo %^%w+$"))
+        assert.is_truthy(line(6):match("^%- %[x%] done #todo done:2026%-09%-01 10:00 %^%w+$"))
+        assert.are.equal("- [ ] has one #todo ^abc123", line(7))
+        assert.are.equal("- [ ] not mine", line(8))
+        assert.are.equal("- [ ] in a fence #todo", line(11))
+        -- Every id in the buffer is distinct.
+        local seen, count = {}, 0
+        for _, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+            local id = utils.block_id(l)
+            if id then
+                assert.is_nil(seen[id]); seen[id] = true; count = count + 1
+            end
+        end
+        assert.are.equal(3, count)
+        assert.are.equal(0, tasks.mint_ids()) -- nothing left to mint
+    end)
+
+    it("mint_ids takes a range, and every checkbox when there is no require_tag", function()
+        setup({ tasks = { require_tag = nil } })
+        open_note("b.md", { "- [ ] a", "- [ ] b", "- [ ] c" })
+        assert.are.equal(1, tasks.mint_ids({ line1 = 2, line2 = 2 }))
+        assert.are.equal("- [ ] a", line(1))
+        assert.is_truthy(line(2):match("^%- %[ %] b %^%w+$"))
+        assert.are.equal("- [ ] c", line(3))
+    end)
+end)

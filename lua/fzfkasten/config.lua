@@ -83,6 +83,15 @@ M.defaults = {
      -- already says what it refers to. The tags are dropped from the alias
      -- either way -- see `pickers.link_alias`.
      alias = false,
+     -- Mint an id on a line as `:FzfKastenTaskTag` tags it, and on a task
+     -- `:FzfKastenTaskAdd` captures. A task is what gets linked to from the
+     -- daily, and the link needs the id, so it might as well be there from
+     -- the start rather than minted by hand with `:FzfKastenYankLink` later.
+     -- Off by default: the id is a few characters of noise at the end of
+     -- every task in a viewer that does not hide it (GitHub shows it;
+     -- Obsidian does not), and a collection has to want that.
+     on_tag = false,
+     on_capture = false,
      -- Written in front of the link `:FzfKastenLinkToDaily` puts into the
      -- daily note. "- " makes it a list item; "" pastes the bare link.
      daily_bullet = "- ",

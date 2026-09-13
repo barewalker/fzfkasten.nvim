@@ -72,6 +72,7 @@ M.task_due = function(date)
     require('fzfkasten.tasks').set_due(date)
 end
 M.task_undo = function() return require('fzfkasten.tasks').undo() end
+M.mint_ids = function(opts) return require('fzfkasten.tasks').mint_ids(opts) end
 M.task_list = function() require('fzfkasten.tasklist').open() end
 M.task_list_inbox = function() require('fzfkasten.tasklist').inbox() end
 M.collect_tasks = function(opts) return require('fzfkasten.tasks').collect(opts) end

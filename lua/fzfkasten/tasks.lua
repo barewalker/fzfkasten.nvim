@@ -1330,6 +1330,12 @@ function M.tag(opts)
     local _, fm_end = parse_frontmatter(all)
     local scannable = scannable_lines(all, fm_end)
 
+    -- Minted along with the tag when `block_id.on_tag` says so: a task is
+    -- what gets linked to from the daily, and a link needs the id, so the
+    -- id might as well be there from the start. One rewrite, so one `u`.
+    local mint = (config.options.block_id or {}).on_tag
+    local taken = mint and utils.block_ids(all) or nil
+
     local lines = {}
     local tagged = 0
     for lineno = line1, line2 do
@@ -1338,6 +1344,11 @@ function M.tag(opts)
         if out then
             line = out
             tagged = tagged + 1
+            if mint and not utils.block_id(line) then
+                local id = utils.new_block_id(taken)
+                taken[id] = true
+                line = utils.with_block_id(line, id)
+            end
         end
         table.insert(lines, line)
     end
@@ -1440,6 +1451,45 @@ end
 --- @param text string the task text; the checkbox and tag are added here
 --- @param due string|nil an ISO due date to append (already resolved)
 --- @return boolean true when the task was written
+--- Mint a `^id` on every task line in `line1..line2` (the whole buffer when
+--- neither is given) that has none: a checkbox carrying `require_tag` when
+--- one is set, any checkbox otherwise. For a note written before the ids
+--- were, so its tasks can be linked to without visiting each. One buffer
+--- write, so one `u` puts them all back.
+--- @param opts table|nil `{ line1 = integer, line2 = integer }`
+--- @return integer minted
+function M.mint_ids(opts)
+    if not buffer_writable() then return 0 end
+    opts = opts or {}
+    local all = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    local line1 = opts.line1 or 1
+    local line2 = math.min(opts.line2 or #all, #all)
+    if line2 < line1 then line1, line2 = line2, line1 end
+    local tag = config.options.tasks.require_tag
+    local _, fm_end = parse_frontmatter(all)
+    local scannable = scannable_lines(all, fm_end)
+    local taken = utils.block_ids(all)
+
+    local out, minted = {}, 0
+    for lineno = line1, line2 do
+        local line = all[lineno]
+        if scannable[lineno] and split_checkbox(line) and not utils.block_id(line)
+            and (not tag or has_tag(line, tag)) then
+            local id = utils.new_block_id(taken)
+            taken[id] = true
+            line = utils.with_block_id(line, id)
+            minted = minted + 1
+        end
+        out[#out + 1] = line
+    end
+    if minted > 0 then
+        vim.api.nvim_buf_set_lines(0, line1 - 1, line2, false, out)
+    end
+    vim.notify(("[Fzfkasten] %d id%s minted."):format(minted, minted == 1 and "" or "s"),
+        minted > 0 and vim.log.levels.INFO or vim.log.levels.WARN)
+    return minted
+end
+
 function M.add(text, due)
     local o = config.options.tasks
     local line = new_task_line(text, o.require_tag, due)
@@ -1481,6 +1531,9 @@ function M.add(text, due)
         end
     end
 
+    if (config.options.block_id or {}).on_capture then
+        line = utils.with_block_id(line, utils.new_block_id(utils.block_ids(lines)))
+    end
     table.insert(lines, line)
     vim.fn.writefile(lines, path)
     remember(path, #lines, nil, line, true)
