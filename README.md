@@ -22,6 +22,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **Follow Link**: Jump to the link under the cursor (or pick from all links in the buffer). Resolves notes recursively across sub-directories, and can create missing notes from a template. Mappable to `gf` with a native-`gf` fallback.
 - [x] **Backlinks**: Find all notes linking to the current note. `[[note]]`, `[[note|alias]]`, `[[note#heading]]`, `[[folder/note]]` and `[[note.md]]` all count as links to `note`; only whole names match, so `[[note-old]]` is not one.
 - [x] **Line links**: `:FzfKastenYankLink` mints a `^id` on the line under the cursor and yanks `[[note#^id]]`, so a link can point at one task inside a note rather than at the note or at the heading over it. Following it lands on that line however it has been reworded since. The id survives ticking the task off, cancelling it and setting a due date, and never shows up in the task list. See [Line links](#line-links).
+- [x] **The graph drawn**: `:FzfKastenGraphExport` writes the same graph out as one self-contained HTML page that lays it out and lets you move around in it — the shape of the collection, which no list has an answer to. See [Drawing the graph](#drawing-the-graph).
 - [x] **Link graph**: The whole collection read as a graph, in four pickers — what the note you are in is joined to (both directions, several links out), which notes are joined to nothing, which links point at notes that were never written, and which notes everything converges on. See [The link graph](#the-link-graph).
 - [x] **Rename Note**: Rename a note and retarget every link to it — see [Renaming](#renaming-a-note).
 - [x] **Template Engine**: Simple `{{title}}`, `{{date}}`, and `{{hdate}}` placeholders.
@@ -88,6 +89,10 @@ Here is the default configuration. You can override any of these settings in the
   graph = {
     depth = 2,                    -- how far :FzfKastenLinkTree walks
     ignore_dirs = { "templates" },-- directories that are not notes
+    export = {                    -- :FzfKastenGraphExport, see "Drawing the graph"
+      path = vim.fn.stdpath("cache") .. "/fzfkasten/graph.html",
+      open = true,                -- true, false, "firefox {}", or a function
+    },
   },
   transform = {
     insert_link = function(filename)
@@ -250,6 +255,7 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
 
 *   **`:FzfKastenLinkTree [depth]`**: What the note you are in is joined to, both directions at once, as a tree — its links, the notes linking to it, and theirs. See [The link graph](#the-link-graph).
 
+*   **`:FzfKastenGraphExport [depth]`**: The graph drawn instead of listed, as one HTML page. See [Drawing the graph](#drawing-the-graph).
 *   **`:FzfKastenOrphans`** / **`:FzfKastenDeadLinks`** / **`:FzfKastenHubs`**: The same graph read three other ways — notes joined to nothing, links pointing at notes that don't exist, and notes by how much meets there. See [The link graph](#the-link-graph).
 
 *   **`:FzfKastenTasks`**: Lists every open `- [ ]` checkbox across your notes. Pick one to jump to that line in its note; press `<ctrl-x>` to mark it done in the note itself. See [Tasks](#tasks).
@@ -410,6 +416,79 @@ rules of the graph's own:
 `graph.ignore_dirs` leaves whole directories out. It defaults to `templates`,
 which are not notes: their `[[{{title}}]]` placeholders would be dead links, and
 the templates themselves would sit in the orphan list forever.
+
+## Drawing the graph
+
+A list can say which notes are joined and how many links meet where. It cannot
+say what shape the collection is in — whether it is one body of work or nine
+unrelated ones, where the clusters are, which hub the rest hangs off. That is
+not a question with a textual answer; you have to see it laid out.
+
+`:FzfKastenGraphExport` writes the same `build()` the pickers read to a single
+HTML page that draws it, and reports the path:
+
+```
+:FzfKastenGraphExport          " the whole collection
+:FzfKastenGraphExport 2        " this note and everything two links from it
+```
+
+| Key | |
+|---|---|
+| drag a node | move it, and it stays where you put it |
+| double-click | hand it back to the layout |
+| wheel | zoom about the pointer |
+| drag the background | pan |
+| click a note | isolate it and its neighbours; click away, or `esc`, to clear |
+| type in the box, or `/` | filter by name; `<enter>` centres on the first match |
+| `u` | bring in the notes joined to nothing |
+| `f` | fit everything back on screen |
+
+The page carries its own layout and drawing and loads nothing from anywhere —
+no fonts, no scripts, no stylesheets. It opens the same over a tailnet, off a
+USB stick, or on a laptop with no network, and it is one file you can send
+someone. It follows the browser's light or dark setting.
+
+**Notes joined to nothing are held back**, behind the `unlinked` checkbox. In a
+collection still being written they are usually most of it — 295 of 515 in the
+one this was built against — and drawn they are a gas that squeezes everything
+connected into a knot too small to read a name in. The count says how many are
+being held back; `u` puts them in, in rings around the outside, which is where
+their position carries as much as it can, there being no link to place them by.
+
+A name **no note answers to** is drawn hollow, in the dead-link colour: a place
+in the graph the collection has not written yet. With a depth, the note you
+started from is marked, and degrees are still counted over the whole graph — a
+hub at the edge of the picture is drawn the size it is in the collection, not
+the size of the corner you asked about.
+
+It writes to `graph.export.path` — under `stdpath("cache")` by default, so a
+generated file does not land in the collection, turn up in `git status` or show
+in the note finder — and then opens it.
+
+`graph.export.open` says how. `true`, the default, hands the file to whatever
+the system opens an HTML file with (`xdg-open`, `open`). That is the right
+answer at the machine and the wrong one over ssh, where there is no display to
+open it on: there, name a command instead, with `{}` where the path goes (it is
+appended if you leave it out).
+
+```lua
+graph = {
+  export = {
+    open = true,                        -- xdg-open / open
+    -- open = "firefox {}",             -- a particular browser
+    -- open = "ssh laptop 'xdg-open {}'",
+    -- open = function(path) ... end,   -- anything else
+    -- open = false,                    -- just say where it was written
+  },
+},
+```
+
+Whichever it is, the path is reported either way, and a command that fails says
+so rather than doing nothing. `true` on a Linux box with no display — an ssh or
+mosh session, which is how a collection on another machine is usually reached —
+does not reach for `xdg-open` at all: it would fail a moment later, once Neovim
+had stopped watching, and the command would appear to do nothing. It says there
+is no display and names the file instead.
 
 ## Tasks
 

@@ -23,6 +23,10 @@ M.orphans = function() require('fzfkasten.graph').orphans_picker() end
 M.dead_links = function() require('fzfkasten.graph').dead_links_picker() end
 M.hubs = function() require('fzfkasten.graph').hubs_picker() end
 M.link_graph = function() return require('fzfkasten.graph').build() end
+-- No depth draws the whole collection; a depth draws this note's corner of it.
+M.graph_export = function(depth)
+    return require('fzfkasten.export').graph_export(vim.api.nvim_buf_get_name(0), depth)
+end
 M.find_daily_notes = function() require('fzfkasten.pickers').find_daily_notes_picker() end
 M.log = function() require('fzfkasten.pickers').log() end
 -- Kept as an alias: the date picker grew to cover weeks and previews and became

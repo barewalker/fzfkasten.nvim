@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<style>
+  /* No fonts, no scripts, no stylesheets from anywhere else: the page is one
+     file, opened over a tailnet or off a USB stick, and a graph that needs the
+     internet to draw itself is a graph you cannot look at on a train. */
+  :root {
+    color-scheme: light dark;
+    --bg: #fbfaf8;
+    --fg: #2e2c28;
+    --dim: #9a958c;
+    --edge: rgba(60, 55, 48, 0.32);
+    --edge-lit: rgba(60, 55, 48, 0.7);
+    --node: #4a6fa5;
+    --node-root: #b4530f;
+    --node-missing: #b06a4a;
+    --hit: #1c7c54;
+    --panel: rgba(251, 250, 248, 0.94);
+    --line: rgba(60, 55, 48, 0.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181c;
+      --fg: #dfe1e4;
+      --dim: #767b83;
+      --edge: rgba(220, 226, 233, 0.28);
+      --edge-lit: rgba(220, 226, 233, 0.7);
+      --node: #7aa2d8;
+      --node-root: #e0873f;
+      --node-missing: #d08a63;
+      --hit: #5cc196;
+      --panel: rgba(22, 24, 28, 0.94);
+      --line: rgba(220, 226, 233, 0.16);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 13px/1.5 ui-sans-serif, system-ui, "Noto Sans CJK JP", sans-serif;
+    overflow: hidden;
+  }
+  canvas { display: block; touch-action: none; cursor: grab; }
+  canvas.grabbing { cursor: grabbing; }
+  .panel {
+    position: fixed;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px 10px;
+    backdrop-filter: blur(6px);
+  }
+  #bar { top: 10px; left: 10px; display: flex; gap: 8px; align-items: center; }
+  #q {
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 2px 2px 3px;
+    width: 15em;
+    outline: none;
+  }
+  #q:focus { border-bottom-color: var(--hit); }
+  #count { color: var(--dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  #loose-toggle { color: var(--dim); white-space: nowrap; cursor: pointer; user-select: none; }
+  #loose-toggle input { vertical-align: -1px; margin: 0 3px 0 0; }
+  #loose-toggle.gone { display: none; }
+  #info { top: 10px; right: 10px; max-width: 22em; display: none; }
+  #info.on { display: block; }
+  #info h1 { font-size: 13px; margin: 0 0 4px; font-weight: 600; word-break: break-word; }
+  #info dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; }
+  #info dt { color: var(--dim); }
+  #info dd { margin: 0; font-variant-numeric: tabular-nums; }
+  #info .path { color: var(--dim); margin-top: 6px; word-break: break-all; user-select: text; }
+  #legend { bottom: 10px; left: 10px; color: var(--dim); display: flex; gap: 14px; }
+  #legend b { color: var(--fg); font-weight: 600; }
+  #hint { bottom: 10px; right: 10px; color: var(--dim); }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="bar" class="panel">
+  <input id="q" type="search" placeholder="filter by name" autocomplete="off" spellcheck="false">
+  <label id="loose-toggle"><input id="loose" type="checkbox"> unlinked</label>
+  <span id="count"></span>
+</div>
+
+<div id="info" class="panel">
+  <h1 id="i-name"></h1>
+  <dl>
+    <dt>linked to</dt><dd id="i-back"></dd>
+    <dt>links out</dt><dd id="i-out"></dd>
+  </dl>
+  <div class="path" id="i-path"></div>
+</div>
+
+<div id="legend" class="panel">
+  <span><b>drag</b> a node to move it</span>
+  <span><b>wheel</b> to zoom</span>
+  <span><b>click</b> to isolate</span>
+  <span><b>esc</b> to clear</span>
+  <span><b>u</b> shows the unlinked</span>
+</div>
+
+<div id="hint" class="panel"><span id="scope"></span></div>
+
+<script id="graph-data" type="application/json">{{DATA}}</script>
+<script>
+"use strict";
+
+const DATA = JSON.parse(document.getElementById("graph-data").textContent);
+const nodes = DATA.nodes;
+// A collection with no link in it encodes its empty list as an empty object,
+// which is still nothing to iterate -- but it has to be nothing of the right
+// shape before anything walks it.
+const links = Array.isArray(DATA.links) ? DATA.links : [];
+const N = nodes.length;
+
+document.getElementById("scope").textContent = DATA.scope;
+
+// ---------------------------------------------------------------- layout ---
+//
+// Fruchterman-Reingold, plain and O(n^2): every pair pushes apart, every link
+// pulls together, and a weak pull to the centre keeps a component that links to
+// nothing from drifting off the canvas. A quadtree would be the answer at ten
+// thousand notes; at a few hundred the pair loop costs under a millisecond and
+// needs no approximation to explain.
+const K = 74;                 // the edge length the layout settles towards
+// Repulsion is local, and gravity is what holds the rest together. A collection
+// is not one connected graph but dozens of small ones, and with repulsion
+// reaching across the whole canvas they shove each other to the edges: the
+// picture is then mostly the gaps between them, drawn at a zoom where no name
+// is legible. Cut off at a few edge lengths, the components pack against one
+// another instead -- measured over 220 connected notes, that is 27px between
+// neighbours on a 1200px canvas rather than 15.
+const CUT2 = (K * 3) ** 2;
+const GRAVITY = 0.12;
+
+const x = new Float64Array(N), y = new Float64Array(N);
+const fx = new Float64Array(N), fy = new Float64Array(N);
+const pinned = new Uint8Array(N);
+const deg = new Int32Array(N);
+
+for (let i = 0; i < N; i++) deg[i] = nodes[i].back + nodes[i].out;
+
+// Notes with no link in the picture are laid out apart from the rest.
+//
+// In a collection that is still being written most notes are joined to nothing
+// yet -- here they were more than half of them -- and left in the simulation
+// they are a gas: they push the connected notes into a knot in the middle and
+// take the canvas for themselves. Their position carries nothing either, since
+// there is no link to place them by. So they are held back behind a checkbox,
+// and shown in rings around the outside -- both out of the way and what they
+// actually are: the edge of the collection, waiting to be joined to it.
+const ldeg = new Int32Array(N);
+for (const l of links) { ldeg[l.source]++; ldeg[l.target]++; }
+const core = [], loose = [];
+for (let i = 0; i < N; i++) (ldeg[i] ? core : loose).push(i);
+const C = core.length;
+
+// Seeded on a spiral rather than at random, so the same collection draws the
+// same picture twice: a graph you cannot recognise from yesterday is one you
+// have to re-read every time you open it.
+const GOLDEN = Math.PI * (3 - Math.sqrt(5));
+for (let a = 0; a < C; a++) {
+  const r = K * 0.9 * Math.sqrt(a + 0.5);
+  x[core[a]] = r * Math.cos(a * GOLDEN);
+  y[core[a]] = r * Math.sin(a * GOLDEN);
+}
+
+// The rings, packed at about one edge length apart and starting clear of
+// whatever the connected notes have grown to.
+function placeLoose() {
+  if (!loose.length) return;
+  let far = 0;
+  for (const i of core) far = Math.max(far, Math.hypot(x[i], y[i]));
+  const gap = K * 1.25;
+  let r = far * 1.12 + gap * 4, a = 0, seat = 0, per = Math.max(6, Math.floor((2 * Math.PI * r) / gap));
+  for (const i of loose) {
+    if (seat >= per) { r += gap; seat = 0; per = Math.max(6, Math.floor((2 * Math.PI * r) / gap)); a += 0.4; }
+    const t = a + (seat / per) * Math.PI * 2;
+    x[i] = r * Math.cos(t);
+    y[i] = r * Math.sin(t);
+    seat++;
+  }
+}
+
+let temp = K * 6;
+let settled = false;
+
+function tick() {
+  fx.fill(0); fy.fill(0);
+
+  for (let a = 0; a < C; a++) {
+    const i = core[a];
+    for (let b = a + 1; b < C; b++) {
+      const j = core[b];
+      let dx = x[i] - x[j], dy = y[i] - y[j];
+      let d2 = dx * dx + dy * dy;
+      if (d2 > CUT2) continue;
+      if (d2 < 1e-6) { dx = (i % 7) - 3 + 0.5; dy = (j % 7) - 3 + 0.5; d2 = dx * dx + dy * dy; }
+      const d = Math.sqrt(d2);
+      const f = (K * K) / d2;   // (k^2 / d) split over the unit vector (dx/d)
+      fx[i] += dx * f; fy[i] += dy * f;
+      fx[j] -= dx * f; fy[j] -= dy * f;
+    }
+  }
+
+  for (const l of links) {
+    const a = l.source, b = l.target;
+    const dx = x[a] - x[b], dy = y[a] - y[b];
+    const d = Math.hypot(dx, dy) || 0.01;
+    const f = d / K;            // (d^2 / k) split over the unit vector
+    fx[a] -= dx * f; fy[a] -= dy * f;
+    fx[b] += dx * f; fy[b] += dy * f;
+  }
+
+  for (const i of core) {
+    fx[i] -= x[i] * GRAVITY;
+    fy[i] -= y[i] * GRAVITY;
+  }
+
+  for (const i of core) {
+    if (pinned[i]) continue;
+    const d = Math.hypot(fx[i], fy[i]);
+    if (d < 1e-9) continue;
+    const step = Math.min(d, temp);
+    x[i] += (fx[i] / d) * step;
+    y[i] += (fy[i] / d) * step;
+  }
+
+  temp *= 0.985;
+  if (temp < 0.4) settled = true;
+}
+
+
+// ------------------------------------------------------------- neighbours ---
+const adj = Array.from({ length: N }, () => []);
+for (const l of links) { adj[l.source].push(l.target); adj[l.target].push(l.source); }
+
+// --------------------------------------------------------------- viewport ---
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+let scale = 1, ox = 0, oy = 0, W = 0, H = 0;
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.style.width = W + "px";
+  canvas.style.height = H + "px";
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+
+function fit() {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let i = 0; i < N; i++) {
+    if (!drawn(i)) continue;
+    if (x[i] < x0) x0 = x[i];
+    if (x[i] > x1) x1 = x[i];
+    if (y[i] < y0) y0 = y[i];
+    if (y[i] > y1) y1 = y[i];
+  }
+  if (!isFinite(x0)) { x0 = y0 = -K; x1 = y1 = K; }
+  const pad = 60;
+  scale = Math.min((W - pad * 2) / Math.max(x1 - x0, 1), (H - pad * 2) / Math.max(y1 - y0, 1));
+  scale = Math.max(0.05, Math.min(scale, 2.2));
+  ox = W / 2 - ((x0 + x1) / 2) * scale;
+  oy = H / 2 - ((y0 + y1) / 2) * scale;
+}
+
+const sx = i => x[i] * scale + ox;
+const sy = i => y[i] * scale + oy;
+const radius = i => 3 + Math.sqrt(deg[i]) * 1.7;
+
+// ------------------------------------------------------------------ state ---
+let selected = -1, hovered = -1, query = "", showLoose = false;
+const drawn = i => showLoose || ldeg[i] > 0;
+let matches = null;           // Set of indices, or null when the filter is empty
+let lit = null;               // what stays undimmed: the selection and its neighbours
+
+function recompute() {
+  matches = null;
+  if (query) {
+    const q = query.toLowerCase();
+    matches = new Set();
+    for (let i = 0; i < N; i++) if (drawn(i) && nodes[i].name.toLowerCase().includes(q)) matches.add(i);
+  }
+  lit = null;
+  if (selected >= 0) {
+    lit = new Set(adj[selected]);
+    lit.add(selected);
+  }
+  const count = document.getElementById("count");
+  const shownCount = showLoose ? N : C;
+  showInfo();
+  count.textContent = matches
+    ? matches.size + " / " + shownCount + " notes"
+    : shownCount + " notes · " + links.length + " links"
+      + (showLoose || !loose.length ? "" : " · " + loose.length + " unlinked hidden");
+  draw();
+}
+
+function showInfo() {
+  const box = document.getElementById("info");
+  const i = hovered >= 0 ? hovered : selected;
+  if (i < 0) { box.classList.remove("on"); return; }
+  const n = nodes[i];
+  document.getElementById("i-name").textContent = n.name;
+  document.getElementById("i-back").textContent = n.back;
+  document.getElementById("i-out").textContent = n.out;
+  document.getElementById("i-path").textContent = n.path || "(no note is written under this name)";
+  box.classList.add("on");
+}
+
+// ------------------------------------------------------------------- draw ---
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+function draw() {
+  const C = {
+    bg: css("--bg"), fg: css("--fg"), dim: css("--dim"),
+    edge: css("--edge"), edgeLit: css("--edge-lit"),
+    node: css("--node"), root: css("--node-root"),
+    missing: css("--node-missing"), hit: css("--hit"),
+  };
+
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const dimming = lit !== null || matches !== null;
+  const shown = i => !dimming || (lit ? lit.has(i) : true) && (matches ? matches.has(i) : true);
+
+  ctx.lineWidth = 1;
+  for (const l of links) {
+    const on = shown(l.source) && shown(l.target);
+    if (dimming && !on) continue;
+    ctx.strokeStyle = on && dimming ? C.edgeLit : C.edge;
+    ctx.beginPath();
+    ctx.moveTo(sx(l.source), sy(l.source));
+    ctx.lineTo(sx(l.target), sy(l.target));
+    ctx.stroke();
+  }
+
+  // Labels are the point of the picture, but all of them at once is a wall of
+  // text. Zoomed out only the notes worth walking towards are named; zoom in
+  // and the rest appear, the way a map hands you street names as you approach.
+  const nameFrom = Math.max(2, Math.round(3 / Math.max(scale, 0.1)));
+  const wanted = [];
+  ctx.font = '12px ui-sans-serif, system-ui, "Noto Sans CJK JP", sans-serif';
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.lineJoin = "round";
+
+  for (let i = 0; i < N; i++) {
+    if (!drawn(i)) continue;
+    const px = sx(i), py = sy(i), r = radius(i);
+    if (px < -60 || py < -40 || px > W + 60 || py > H + 40) continue;
+    const on = shown(i);
+    const hit = matches ? matches.has(i) : false;
+
+    ctx.globalAlpha = on ? 1 : 0.12;
+    ctx.beginPath();
+    ctx.arc(px, py, r, 0, Math.PI * 2);
+
+    if (nodes[i].missing) {
+      // A name no note answers to is drawn hollow: it is a place in the graph
+      // that the collection has not written yet.
+      ctx.fillStyle = C.bg;
+      ctx.fill();
+      ctx.strokeStyle = C.missing;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = i === DATA.root_index ? C.root : ldeg[i] ? C.node : C.dim;
+      ctx.fill();
+    }
+
+    if (i === selected || i === hovered || hit) {
+      ctx.beginPath();
+      ctx.arc(px, py, r + 3.5, 0, Math.PI * 2);
+      ctx.strokeStyle = hit && i !== selected ? C.hit : C.fg;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    if (on && (i === selected || i === hovered || hit || (lit ? lit.has(i) : deg[i] >= nameFrom))) {
+      wanted.push(i);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Labels last, and only where one fits.
+  //
+  // Written as each node is drawn they pile up on each other in exactly the
+  // places worth reading -- four names on one hub is four names you cannot
+  // read. So the most connected note claims its space first and anything whose
+  // box would land on top of an existing one goes unlabelled until you zoom in
+  // far enough to separate them.
+  wanted.sort((a, b) => {
+    const rank = i => (i === selected || i === hovered ? 2 : matches && matches.has(i) ? 1 : 0);
+    return (rank(b) - rank(a)) || (deg[b] - deg[a]);
+  });
+
+  const taken = [];
+  for (const i of wanted) {
+    const t = nodes[i].name;
+    const w = ctx.measureText(t).width;
+    const bx = sx(i) - w / 2, by = sy(i) + radius(i) + 3, bw = w, bh = 16;
+    let free = true;
+    for (const o of taken) {
+      if (bx < o[0] + o[2] && bx + bw > o[0] && by < o[1] + o[3] && by + bh > o[1]) { free = false; break; }
+    }
+    if (!free) continue;
+    taken.push([bx, by, bw, bh]);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = C.bg;
+    ctx.strokeText(t, sx(i), by);
+    ctx.fillStyle = nodes[i].missing ? C.missing : C.fg;
+    ctx.fillText(t, sx(i), by);
+  }
+}
+
+// ----------------------------------------------------------------- events ---
+function pick(px, py) {
+  let best = -1, bestD = Infinity;
+  for (let i = 0; i < N; i++) {
+    if (!drawn(i)) continue;
+    const dx = px - sx(i), dy = py - sy(i);
+    const d = dx * dx + dy * dy;
+    const r = radius(i) + 6;
+    if (d < r * r && d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+let drag = null;   // { i } while a node is held, { pan: true } while the ground is
+
+canvas.addEventListener("pointerdown", e => {
+  canvas.setPointerCapture(e.pointerId);
+  const i = pick(e.clientX, e.clientY);
+  if (i >= 0) {
+    drag = { i, moved: false };
+    pinned[i] = 1;
+  } else {
+    drag = { pan: true, x: e.clientX, y: e.clientY, moved: false };
+    canvas.classList.add("grabbing");
+  }
+});
+
+canvas.addEventListener("pointermove", e => {
+  if (drag && drag.pan) {
+    ox += e.clientX - drag.x; oy += e.clientY - drag.y;
+    drag.x = e.clientX; drag.y = e.clientY; drag.moved = true;
+    draw();
+    return;
+  }
+  if (drag) {
+    x[drag.i] = (e.clientX - ox) / scale;
+    y[drag.i] = (e.clientY - oy) / scale;
+    drag.moved = true;
+    // Let the rest of the graph answer the node you are pulling.
+    temp = Math.max(temp, K * 0.35);
+    settled = false;
+    return;
+  }
+  const i = pick(e.clientX, e.clientY);
+  if (i !== hovered) { hovered = i; showInfo(); draw(); }
+});
+
+canvas.addEventListener("pointerup", e => {
+  canvas.classList.remove("grabbing");
+  if (drag && drag.i !== undefined) {
+    // A node you merely clicked goes back to the layout; one you dragged
+    // somewhere stays where you put it, which is what dragging it meant.
+    if (!drag.moved) {
+      pinned[drag.i] = 0;
+      selected = selected === drag.i ? -1 : drag.i;
+      recompute();
+    }
+  } else if (drag && drag.pan && !drag.moved) {
+    selected = -1;
+    recompute();
+  }
+  drag = null;
+});
+
+canvas.addEventListener("dblclick", e => {
+  const i = pick(e.clientX, e.clientY);
+  if (i >= 0) { pinned[i] = 0; temp = Math.max(temp, K); settled = false; }
+});
+
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  const f = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0015));
+  const next = Math.max(0.04, Math.min(scale * f, 12));
+  // Zoom about the pointer: the note you are looking at stays under it.
+  ox = e.clientX - ((e.clientX - ox) / scale) * next;
+  oy = e.clientY - ((e.clientY - oy) / scale) * next;
+  scale = next;
+  draw();
+}, { passive: false });
+
+const looseBox = document.getElementById("loose");
+if (!loose.length) document.getElementById("loose-toggle").classList.add("gone");
+looseBox.addEventListener("change", () => {
+  showLoose = looseBox.checked;
+  selected = -1;
+  fit();
+  recompute();
+});
+
+const q = document.getElementById("q");
+q.addEventListener("input", () => { query = q.value.trim(); recompute(); });
+q.addEventListener("keydown", e => {
+  if (e.key === "Escape") { q.value = ""; query = ""; q.blur(); recompute(); }
+  if (e.key === "Enter" && matches && matches.size) {
+    // Centre on the first match, at a zoom where its neighbours are readable.
+    const i = [...matches][0];
+    scale = Math.max(scale, 1);
+    ox = W / 2 - x[i] * scale;
+    oy = H / 2 - y[i] * scale;
+    selected = i;
+    recompute();
+  }
+});
+
+window.addEventListener("keydown", e => {
+  if (e.key === "Escape") { selected = -1; query = ""; q.value = ""; recompute(); }
+  if (e.key === "/" && document.activeElement !== q) { e.preventDefault(); q.focus(); }
+  if (e.key === "f" && document.activeElement !== q) { fit(); draw(); }
+  if (e.key === "u" && document.activeElement !== q) { looseBox.checked = !looseBox.checked; looseBox.dispatchEvent(new Event("change")); }
+});
+
+window.addEventListener("resize", resize);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+
+// ------------------------------------------------------------------- loop ---
+// The layout is run against a time budget rather than a tick count: a large
+// collection takes more frames to settle, and either way the page answers the
+// pointer at once instead of freezing while it thinks.
+let fitted = false;
+function frame() {
+  if (!settled) {
+    const until = performance.now() + 12;
+    do { tick(); } while (!settled && performance.now() < until);
+    placeLoose();
+    if (!fitted && temp < K * 1.6) { fit(); fitted = true; }
+    draw();
+  }
+  requestAnimationFrame(frame);
+}
+
+resize();
+// Settle before the first paint, so the page opens on a graph rather than on a
+// spiral unwinding: a few hundred ticks is a few dozen milliseconds.
+for (let i = 0; i < 220 && !settled; i++) tick();
+placeLoose();
+fit();
+fitted = true;
+recompute();
+frame();
+</script>
+</body>
+</html>

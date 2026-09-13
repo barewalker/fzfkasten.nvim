@@ -165,6 +165,23 @@ COMMANDS
   walk is about 40ms over 500 notes. Fenced code blocks are not read -- `if [[
   ! -f x ]]` is not a link -- and graph.ignore_dirs, "templates" by default,
   leaves whole directories out.)
+- FzfKastenGraphExport: The same graph drawn, rather than listed. Writes one
+  self-contained HTML page (no fonts, scripts or styles from anywhere) that
+  lays the notes out with a force simulation: drag a node, wheel to zoom,
+  click one to isolate it and its neighbours, type in the box to filter, `u`
+  to bring in the notes joined to nothing (held back by default -- they are
+  usually most of a collection and squeeze the rest into a knot), `f` to fit,
+  `esc` to clear. With no argument it draws the whole collection; with a depth
+  -- `:FzfKastenGraphExport 2` -- the current note and everything that many
+  links from it, the note itself marked. Written to graph.export.path
+  (|stdpath| "cache" by default, so nothing lands in the collection), the path
+  reported, and then opened. graph.export.open says how: `true` (the default)
+  hands it to |vim.ui.open|, which is right at the machine and wrong over ssh
+  where there is no display; a string is a command with `{}` where the path
+  goes, e.g. "firefox {}" or "ssh laptop 'xdg-open {}'"; a function is called
+  with the path; `false` only reports it. A command that fails says so, and
+  `true` on Linux with no DISPLAY or WAYLAND_DISPLAY -- an ssh or mosh session
+  -- says there is nowhere to open it rather than failing out of sight.
 - FzfKastenRenameNote: Rename the current note and retarget every link to it:
   [[old]], [[old|alias]], [[old#heading]], [[old#heading|alias]], [[old.md]] and
   [[folder/old]] all follow. The anchor and the alias are carried across
