@@ -94,7 +94,7 @@ COMMANDS
   as an outline, its first week.digest.lines body lines quoted; then the
   tasks finished in the week by their done: stamp and the ones still open in
   the week's notes (week.digest.tasks; require_tag applies), each linked to
-  its line when it has a ^id and listed with week.digest.marks (✓ / ○), not
+  its line when it has a ^id and listed with week.digest.marks (✓ / ☐), not
   as a checkbox, so pasted into the weekly note it is not scanned as a
   second copy of the task. The buffer is
   writable, named fzfkasten://week/<week> and reused; <enter> on a section

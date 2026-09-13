@@ -245,7 +245,9 @@ M.defaults = {
    -- What a task is listed with. Not a checkbox on purpose: a digest line
    -- is a reference to a task living elsewhere, and pasted into the weekly
    -- note as `- [ ]` it would be scanned as a second copy of it.
-   marks = { done = "✓", open = "○" },
+   -- ☐ (U+2610) rather than □ (U+25A1), which is ambiguous-width and comes
+   -- out fullwidth in a CJK font.
+   marks = { done = "✓", open = "☐" },
    -- Put the week's calendar events first, when `calendar.enabled` is on.
    calendar = true,
    -- How many weeks past the digest's own to look forward: their calendar

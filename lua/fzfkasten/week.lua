@@ -488,7 +488,7 @@ function M.digest_lines(range, notes, opts)
         local text = t.priority and ("(%s) %s"):format(t.priority, t.text) or t.text
         local target = utils.note_name(t.rel)
         if t.id then target = target .. "#^" .. t.id end
-        return ("- %s %s  ([[%s]])"):format(marks[mark] or (mark == "done" and "✓" or "○"), text, target)
+        return ("- %s %s  ([[%s]])"):format(marks[mark] or (mark == "done" and "✓" or "☐"), text, target)
     end
 
     local due_ahead = {}
