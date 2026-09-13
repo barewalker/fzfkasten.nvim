@@ -914,6 +914,18 @@ tasks = {
 
 `open = "full"` takes the current window, so `<enter>` opens the note in place and `<c-o>` comes back. The split variants leave the window you were reading in, and `<enter>` opens the note *there* — so the list stays on screen beside it.
 
+#### Colours
+
+The list is drawn, not parsed -- it has no syntax file and no parser -- so
+what a note's highlighting would colour, the list colours by hand, through
+highlight groups of its own: `FzfkastenTag` (`#qms`, every tag on a row, by
+the same `patterns.tag` the scanner reads them with), `FzfkastenPriority`
+(`(A)`), `FzfkastenDue` (`[due 2026-09-16]`) and `FzfkastenMeta` (the `↳`,
+the `[1/3]` subtask count, the `←` context and the note name at the right
+edge). They link to `Special`, `Statement`, `Constant` and `Comment` by
+default; a colorscheme, or `vim.api.nvim_set_hl(0, "FzfkastenTag", { ... })`
+in your config, restyles them.
+
 ### Ordering the list
 
 The list opens ordered by priority, then by due date — what you flagged, then what runs out. `<alt-s>` cycles that to two other orderings, and `<alt-r>` flips whichever one is in force:

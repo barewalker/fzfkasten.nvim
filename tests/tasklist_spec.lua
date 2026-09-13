@@ -293,6 +293,55 @@ describe("tasklist: changing the view", function()
     end)
 end)
 
+describe("tasklist: colouring", function()
+    after_each(cleanup)
+
+    -- What is highlighted as what on a row, as { text = group } pairs.
+    local function marks_on(lineno)
+        local ns = vim.api.nvim_get_namespaces()["fzfkasten-tasklist"]
+        local bufnr = vim.api.nvim_get_current_buf()
+        local line = vim.api.nvim_buf_get_lines(bufnr, lineno - 1, lineno, false)[1]
+        local out = {}
+        for _, m in ipairs(vim.api.nvim_buf_get_extmarks(bufnr, ns, { lineno - 1, 0 }, { lineno - 1, -1 }, { details = true })) do
+            local d = m[4]
+            if d.hl_group and d.end_col then
+                out[#out + 1] = { line:sub(m[3] + 1, d.end_col), d.hl_group }
+            end
+        end
+        return out
+    end
+
+    it("colours every tag on a task, by the scanner's own tag pattern", function()
+        setup({ tasks = { require_tag = "todo" } })
+        note("n.md", { "- [ ] (A) file the report #todo #qms due:2026-09-16" })
+        tasklist.open()
+        local groups = {}
+        for _, m in ipairs(marks_on(3)) do groups[m[1]] = m[2] end
+        -- `require_tag` itself is not shown on a row (every task carries it),
+        -- so the tags to colour are the others.
+        assert.is_falsy(lines()[3]:find("#todo", 1, true))
+        assert.are.equal("FzfkastenTag", groups["#qms"])
+        assert.are.equal("FzfkastenPriority", groups["(A)"])
+        assert.are.equal("FzfkastenDue", groups["[due 2026-09-16]"])
+    end)
+
+    it("colours several tags on one task, and none inside the context", function()
+        setup({ tasks = { require_tag = "todo" } })
+        note("n.md", { "- meeting #qms", "  - [ ] follow up #todo #lintec #rtt" })
+        tasklist.open()
+        local tags = {}
+        for _, m in ipairs(marks_on(3)) do
+            if m[2] == "FzfkastenTag" then tags[#tags + 1] = m[1] end
+        end
+        assert.are.same({ "#lintec", "#rtt" }, tags)
+    end)
+
+    it("links its groups to standard ones unless the user set them first", function()
+        assert.are.equal("Special", vim.api.nvim_get_hl(0, { name = "FzfkastenTag" }).link)
+        assert.are.equal("Comment", vim.api.nvim_get_hl(0, { name = "FzfkastenMeta" }).link)
+    end)
+end)
+
 describe("tasklist: configuration", function()
     after_each(cleanup)
 

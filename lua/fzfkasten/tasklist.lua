@@ -24,6 +24,22 @@ local M = {}
 local NAME = "fzfkasten://tasks"
 local ns = vim.api.nvim_create_namespace("fzfkasten-tasklist")
 
+-- The list has no syntax file and no parser -- it is drawn, not parsed -- so
+-- what a note's highlighting would have coloured, `decorate` colours by hand.
+-- Groups of its own, linked to standard ones by default, so a colorscheme or
+-- a `vim.api.nvim_set_hl(0, "FzfkastenTag", ...)` in your config can restyle
+-- them without reaching into this file. `default = true` keeps a link the
+-- user set first.
+local GROUPS = {
+    FzfkastenTag = "Special",        -- #todo, #qms: the tags on a task
+    FzfkastenPriority = "Statement", -- (A)
+    FzfkastenDue = "Constant",       -- [due 2026-09-16]
+    FzfkastenMeta = "Comment",       -- ↳, [1/3], ← context, and the source
+}
+for group, link in pairs(GROUPS) do
+    vim.api.nvim_set_hl(0, group, { link = link, default = true })
+end
+
 -- The one list buffer, and what it is currently showing. Reopening reuses it
 -- rather than stacking up buffers that all say the same thing.
 local buf = nil
@@ -124,24 +140,40 @@ end
 -- task's note and line off the right edge as virtual text -- there, but never
 -- in the way of reading the task, and never something a yank picks up.
 local function decorate(lineno, line, task)
-    local function hl(pattern, group)
+    -- Every match, not the first: a task can carry several tags.
+    local function hl(pattern, group, stop)
         local from, to = line:find(pattern)
-        if from then
+        while from do
             vim.api.nvim_buf_set_extmark(buf, ns, lineno - 1, from - 1, {
                 end_col = to,
                 hl_group = group,
             })
+            if stop then break end
+            from, to = line:find(pattern, to + 1)
         end
     end
-    hl("^%s*↳", "Comment")
-    hl("%(%u%)", "Statement")
-    hl("%[%d+/%d+%]", "Comment")
-    hl("%[due [^%]]+%]", "Constant")
-    hl("←.*$", "Comment")
+    hl("^%s*↳", "FzfkastenMeta", true)
+    hl("%(%u%)", "FzfkastenPriority", true)
+    hl("%[%d+/%d+%]", "FzfkastenMeta", true)
+    hl("%[due [^%]]+%]", "FzfkastenDue", true)
+    -- The same pattern the scanner reads tags by, so what counts as a tag here
+    -- is what counted as one there. Only up to the context arrow: what the
+    -- task hangs off is coloured as context whole, tags and all.
+    local head = line:match("^(.-)←") or line
+    local tag = config.options.patterns.tag
+    local from, to = head:find(tag)
+    while from do
+        vim.api.nvim_buf_set_extmark(buf, ns, lineno - 1, from - 1, {
+            end_col = to,
+            hl_group = "FzfkastenTag",
+        })
+        from, to = head:find(tag, to + 1)
+    end
+    hl("←.*$", "FzfkastenMeta", true)
 
     if options().source ~= false then
         vim.api.nvim_buf_set_extmark(buf, ns, lineno - 1, 0, {
-            virt_text = { { string.format("%s:%d", task.rel, task.lineno), "Comment" } },
+            virt_text = { { string.format("%s:%d", task.rel, task.lineno), "FzfkastenMeta" } },
             virt_text_pos = "right_align",
         })
     end
