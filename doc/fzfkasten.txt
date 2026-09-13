@@ -193,6 +193,11 @@ COMMANDS
   ([[note#^t3k9aa|(A) 案を作る]]), cut to alias_max characters. Tags are dropped
   from an alias either way: an alias carrying #todo would file the note it was
   pasted into under it too.
+- FzfKastenBlockIds: Mint a ^id on every task line without one -- a checkbox
+  carrying require_tag when set, any checkbox otherwise -- in the buffer or
+  a range, as one undoable change. block_id.on_tag / on_capture mint one as
+  FzfKastenTaskTag tags a line and as FzfKastenTaskAdd captures, so a task
+  carries its id from the start.
 - FzfKastenShowBacklinks: List every line in the collection that links to the
   current note. [[note]], [[note|alias]], [[note#heading]], [[folder/note]] and
   [[note.md]] all count; only

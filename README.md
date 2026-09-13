@@ -303,8 +303,19 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
       alias = false,                 -- carry the line's text into the link
       alias_max = 40,                -- cutting it to this many characters
       daily_bullet = "- ",           -- in front of the link :FzfKastenLinkToDaily writes
+      on_tag = false,                -- mint an id as :FzfKastenTaskTag tags a line
+      on_capture = false,            -- and on a task :FzfKastenTaskAdd captures
     }
     ```
+
+    With `on_tag` / `on_capture` on, a task carries its id from the moment it
+    becomes one, and `:FzfKastenLinkToDaily` or `:FzfKastenYankLink` never has
+    to write into the note first. The cost is a few characters at the end of
+    every task in a viewer that does not hide them (GitHub shows `^t3k9aa`;
+    Obsidian does not). `:FzfKastenBlockIds` catches a note up: it mints an id
+    on every task line without one -- a checkbox carrying `require_tag` when
+    one is set, any checkbox otherwise -- in the buffer, or in a range
+    (`:'<,'>FzfKastenBlockIds`), as one change `u` puts back.
 
     With `alias = true` the link reads `[[note#^t3k9aa|(A) 案を作る]]`. Tags are dropped from an alias either way — one carrying `#todo` would file the note it was pasted into under it too.
 
