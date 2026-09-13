@@ -119,6 +119,7 @@ Here is the default configuration. You can override any of these settings in the
   -- A week of the collection. See "Looking back over a week".
   week = {
     ignore_dirs = { "templates" },
+    ignore_patterns = {},         -- Lua patterns on the path, e.g. { "%.materials%.md$" }
     digest = {
       lines = 8,                  -- body lines quoted per note; 0 for headings only
       tasks = true,               -- tasks finished in the week, and still open in its notes
@@ -567,9 +568,11 @@ then the frontmatter keys in `tasks.date_keys`, and a `tasks.date` hook of
 yours first of all. Never mtime, for the reason given under [How a note is
 dated](#how-a-note-is-dated): in a git-backed collection it says when the file
 synced, not when the note was written. A note with no date is in no week.
-Directories in `week.ignore_dirs` are left out, and so is the week's own
-weekly note: it is what the review is written into, not what it is written
-from.
+Directories in `week.ignore_dirs` are left out, as is any note whose path
+matches one of the Lua patterns in `week.ignore_patterns` (for notes about
+the week rather than of it -- the materials a review was compiled from, say),
+and so is the week's own weekly note: it is what the review is written into,
+not what it is written from.
 
 Reading every note's frontmatter is one `ripgrep` pass over the collection
 (about 20ms for 500 notes; 3.5 seconds if it were a `readfile` per note on

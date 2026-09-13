@@ -222,6 +222,10 @@ M.defaults = {
   -- Directories (relative to `home`) left out. Templates carry a date
   -- placeholder, not a date, and are not notes.
   ignore_dirs = { "templates" },
+  -- Lua patterns matched against a note's path relative to `home`; a match
+  -- is left out. For notes about the week rather than of it -- the
+  -- materials a review was compiled from, say: { "%.materials%.md$" }.
+  ignore_patterns = {},
   digest = {
    -- How many lines of each note's body the digest quotes, after its outline
    -- of headings. 0 quotes nothing -- headings only.
