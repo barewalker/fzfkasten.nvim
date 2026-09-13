@@ -85,8 +85,9 @@ COMMANDS
   (last week), `2026-W37`, or a date in it. A week is Monday to Sunday, the
   ISO week FzfKastenWeekly names. A note is dated the way tasks are: the
   filename, then the tasks.date_keys frontmatter (read in one rg pass), a
-  tasks.date hook first of all, never mtime. week.ignore_dirs are left out,
-  and so is the week's own weekly note. <ctrl-d> opens the digest instead.
+  tasks.date hook first of all, never mtime. week.ignore_dirs and paths
+  matching week.ignore_patterns (Lua patterns) are left out, and so is the
+  week's own weekly note. <ctrl-d> opens the digest instead.
 - FzfKastenWeekDigest [week]: The same notes laid out in one scratch buffer,
   the material a weekly review is written from: a section per note (day, a
   [[link]], the note's title when it opens with a single `#`), its headings

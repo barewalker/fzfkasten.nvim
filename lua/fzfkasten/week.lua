@@ -108,6 +108,13 @@ local function ignored(rel)
             return true
         end
     end
+    -- By name, for notes that are about the week rather than of it: a
+    -- materials file a review was compiled from, an export.
+    for _, pattern in ipairs(options().ignore_patterns or {}) do
+        if rel:match(pattern) then
+            return true
+        end
+    end
     return false
 end
 

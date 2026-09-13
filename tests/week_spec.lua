@@ -144,6 +144,13 @@ describe("week.notes", function()
         assert.are.same({ "weekly/2026-W36.md", "daily/2026-09-10.md" }, rels(""))
     end)
 
+    it("leaves out notes whose path matches an ignore pattern", function()
+        setup({ week = { ignore_patterns = { "%.materials%.md$" } } })
+        note("lognote/2026-W37.materials.md", { "---", "date: 2026-09-07", "---", "# Materials" })
+        note("lognote/2026-09-10.md", { "" })
+        assert.are.same({ "lognote/2026-09-10.md" }, rels(""))
+    end)
+
     it("does not read a date: line in the body as frontmatter", function()
         note("topics/plan.md", { "# Plan", "", "date: 2026-09-10" })
         assert.are.same({}, rels(""))
