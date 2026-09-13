@@ -127,6 +127,26 @@ M.defaults = {
   -- are not notes: their `[[{{title}}]]` placeholders would be dead links, and
   -- the templates themselves would sit in the orphan list forever.
   ignore_dirs = { "templates" },
+  -- `:FzfKastenGraphExport` writes the graph out as a single HTML page that
+  -- draws it -- the shape of the collection, which no list has an answer to.
+  export = {
+    -- Where the page is written. Outside `home` by default: it is a view of
+    -- the notes, not one of them, and a generated file in the collection ends
+    -- up in `git status` and in the note finder.
+    path = vim.fn.stdpath("cache") .. "/fzfkasten/graph.html",
+    -- Open it once written. `true` hands it to whatever the system opens an
+    -- HTML file with (`xdg-open`, `open`), which is the right answer at the
+    -- machine and the wrong one over ssh, where there is no display to open it
+    -- on. For a browser somewhere else, give a command instead -- `{}` is
+    -- where the path goes, and is appended when it is not named:
+    --
+    --   open = "firefox {}"
+    --   open = "ssh laptop 'xdg-open {}'"
+    --   open = function(path) ... end
+    --
+    -- `false` writes the file and only says where it is.
+    open = true,
+  },
  },
  -- Tasks are plain markdown checkboxes inside your notes -- there is no index
  -- and no separate task file, so any other markdown editor (including mobile
