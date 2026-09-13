@@ -29,6 +29,13 @@ end
 
 vim.opt.rtp:prepend(root)
 
+-- No swap files. The suite runs one nvim per spec file, in parallel, and on a
+-- clean runner they all try to create the swap directory at once; the losers
+-- fail with E303 on their first `:edit` (nightly, 2026-09-13). Nothing here
+-- needs recovery, and a swap file left by a killed run would only raise the
+-- E325 prompt that no headless test can answer.
+vim.opt.swapfile = false
+
 for _, name in ipairs({ "plenary.nvim", "fzf-lua" }) do
     local dir = plugin_dir(name)
     if not dir then
