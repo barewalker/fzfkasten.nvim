@@ -314,6 +314,18 @@ describe("week.digest_lines", function()
         assert.is_truthy(text:find("## Wrong\n\n(unavailable: `fn` is not a function)", 1, true))
     end)
 
+    it("links a task to its line when it carries an id, and to its note otherwise", function()
+        note("tasks/active.md", {
+            "- [x] with id #todo done:2026-09-08 10:00 ^k7q2aa",
+            "- [x] without #todo done:2026-09-08 11:00",
+        })
+        note("daily/2026-09-08.md", { "# Day" })
+        local range = week.range("", on(2026, 9, 12))
+        local text = table.concat(week.digest_lines(range, week.notes(range)), "\n")
+        assert.is_truthy(text:find("- [x] with id #todo  ([[active#^k7q2aa]])", 1, true))
+        assert.is_truthy(text:find("- [x] without #todo  ([[active]])", 1, true))
+    end)
+
     it("can leave the tasks out and quote nothing", function()
         note("daily/2026-09-08.md", { "# Day", "- [x] done done:2026-09-08 10:00", "prose" })
         local range = week.range("", on(2026, 9, 12))

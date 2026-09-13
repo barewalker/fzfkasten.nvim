@@ -735,9 +735,9 @@ end
 ---   returns the checkboxes `require_tag` leaves out. `done` and `cancelled`
 ---   each add that state to the result; both are left out otherwise. `sort` is
 ---   "priority" (the default), "due" or "added", and `reverse` flips it.
---- @return table list of `{ text, done, done_at, cancelled, cancelled_at,
+--- @return table list of `{ text, id, done, done_at, cancelled, cancelled_at,
 ---   priority, due, path, rel, lineno, date, depth, parent, context, children,
----   children_closed, orphaned }`. The last six describe the nesting: `depth`
+---   children_closed, orphaned }`. `id` is the line's `^id` when it has one. The last six describe the nesting: `depth`
 ---   is how many checkboxes this one sits inside, `parent` the task table it
 ---   sits in (nil at the top), `context` the text of the list item directly
 ---   above it whatever that is, `children`/`children_closed` count its subtasks
@@ -829,6 +829,10 @@ function M.collect(opts)
                                         parse_task_text(raw, o)
                                     local task = {
                                         text = text,
+                                        -- The line's `^id`, when it carries one, so
+                                        -- a view can link to the task rather than
+                                        -- to the note it sits in.
+                                        id = utils.block_id(raw),
                                         done = done,
                                         done_at = done_at,
                                         cancelled = cancelled,

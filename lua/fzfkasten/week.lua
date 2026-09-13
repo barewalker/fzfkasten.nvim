@@ -475,9 +475,14 @@ function M.digest_lines(range, notes, opts)
         end
     end
 
+    -- Linked to the line when it carries an id, and to the note otherwise:
+    -- every task in a standing list would else link to the same note, and a
+    -- link that lands on the note's first line tells nothing apart.
     local function task_line(t, mark)
         local text = t.priority and ("(%s) %s"):format(t.priority, t.text) or t.text
-        return ("- [%s] %s  ([[%s]])"):format(mark, text, utils.note_name(t.rel))
+        local target = utils.note_name(t.rel)
+        if t.id then target = target .. "#^" .. t.id end
+        return ("- [%s] %s  ([[%s]])"):format(mark, text, target)
     end
 
     local due_ahead = {}
