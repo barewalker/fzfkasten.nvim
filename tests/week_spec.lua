@@ -261,6 +261,52 @@ describe("week.digest_lines", function()
         assert.are.same({ ["daily/2026-09-08.md"] = true, ["topics/lathe.md"] = true }, seen)
     end)
 
+    it("closes with the weeks ahead: their calendar and the tasks due in them", function()
+        note("tasks/active.md", {
+            "- [ ] next week due:2026-09-16",
+            "- [ ] later due:2026-10-30",
+            "- [ ] this week due:2026-09-10",
+            "- [x] done due:2026-09-15 done:2026-09-08 10:00",
+        })
+        note("daily/2026-09-08.md", { "# Day" })
+        local range = week.range("", on(2026, 9, 12))
+        local lines = week.digest_lines(range, week.notes(range), { ahead = 1 })
+        local text = table.concat(lines, "\n")
+        assert.is_truthy(text:find("## Due 2026-09-14 to 2026-09-20 (1)\n\n- [ ] next week due:2026-09-16  ([[active]])", 1, true))
+        assert.is_falsy(text:find("later", 1, true))
+        -- The week's own section comes first, the ahead one last.
+        assert.is_true(text:find("## 09-08 Tue", 1, true) < text:find("## Due", 1, true))
+
+        local two = table.concat(week.digest_lines(range, week.notes(range), { ahead = 2 }), "\n")
+        assert.is_truthy(two:find("## Due 2026-09-14 to 2026-09-27 (1)", 1, true))
+        local none = table.concat(week.digest_lines(range, week.notes(range), { ahead = 0 }), "\n")
+        assert.is_falsy(none:find("## Due", 1, true))
+    end)
+
+    it("gives each source a section, and a failing one a line", function()
+        note("daily/2026-09-08.md", { "# Day" })
+        local range = week.range("", on(2026, 9, 12))
+        local seen
+        local lines = week.digest_lines(range, week.notes(range), {
+            tasks = false,
+            sources = {
+                { label = "Mail", fn = function(r, a)
+                    seen = { r.from, r.to, a.from, a.to }
+                    return { "- from A: hello", "- from B: world", "" }
+                end },
+                { label = "Tracker", fn = function() return "one\ntwo" end },
+                { label = "Broken", fn = function() error("no socket") end },
+                { label = "Wrong", fn = 42 },
+            },
+        })
+        local text = table.concat(lines, "\n")
+        assert.are.same({ "2026-09-07", "2026-09-13", "2026-09-14", "2026-09-20" }, seen)
+        assert.is_truthy(text:find("## Mail\n\n- from A: hello\n- from B: world\n\n## Tracker\n\none\ntwo\n", 1, true))
+        assert.is_truthy(text:find("## Broken\n\n(unavailable: ", 1, true))
+        assert.is_truthy(text:find("no socket", 1, true))
+        assert.is_truthy(text:find("## Wrong\n\n(unavailable: `fn` is not a function)", 1, true))
+    end)
+
     it("can leave the tasks out and quote nothing", function()
         note("daily/2026-09-08.md", { "# Day", "- [x] done done:2026-09-08 10:00", "prose" })
         local range = week.range("", on(2026, 9, 12))
