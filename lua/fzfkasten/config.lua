@@ -242,6 +242,10 @@ M.defaults = {
    -- Append the tasks finished in the week (by their done: stamp) and the
    -- ones still open in the week's notes.
    tasks = true,
+   -- What a task is listed with. Not a checkbox on purpose: a digest line
+   -- is a reference to a task living elsewhere, and pasted into the weekly
+   -- note as `- [ ]` it would be scanned as a second copy of it.
+   marks = { done = "✓", open = "○" },
    -- Put the week's calendar events first, when `calendar.enabled` is on.
    calendar = true,
    -- How many weeks past the digest's own to look forward: their calendar

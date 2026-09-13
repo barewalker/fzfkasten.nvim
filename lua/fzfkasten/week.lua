@@ -475,14 +475,20 @@ function M.digest_lines(range, notes, opts)
         end
     end
 
+    -- A reference to a task, not a task: a mark that is not a checkbox, so
+    -- the line can be pasted into the weekly note without the scanner reading
+    -- it as a second copy of the task -- one that would sit in the task list
+    -- next to the real one, and in next week's digest as still open.
+    --
     -- Linked to the line when it carries an id, and to the note otherwise:
     -- every task in a standing list would else link to the same note, and a
     -- link that lands on the note's first line tells nothing apart.
+    local marks = o.marks or {}
     local function task_line(t, mark)
         local text = t.priority and ("(%s) %s"):format(t.priority, t.text) or t.text
         local target = utils.note_name(t.rel)
         if t.id then target = target .. "#^" .. t.id end
-        return ("- [%s] %s  ([[%s]])"):format(mark, text, target)
+        return ("- %s %s  ([[%s]])"):format(marks[mark] or (mark == "done" and "✓" or "○"), text, target)
     end
 
     local due_ahead = {}
@@ -509,12 +515,12 @@ function M.digest_lines(range, notes, opts)
 
         if #finished > 0 then
             local rows = {}
-            for _, t in ipairs(finished) do rows[#rows + 1] = task_line(t, "x") end
+            for _, t in ipairs(finished) do rows[#rows + 1] = task_line(t, "done") end
             section(("%s (%d)"):format(l.finished, #finished), rows)
         end
         if #open > 0 then
             local rows = {}
-            for _, t in ipairs(open) do rows[#rows + 1] = task_line(t, " ") end
+            for _, t in ipairs(open) do rows[#rows + 1] = task_line(t, "open") end
             section(("%s (%d)"):format(l.open, #open), rows)
         end
     end
@@ -539,7 +545,7 @@ function M.digest_lines(range, notes, opts)
         if #due_ahead > 0 then
             local rows = {}
             -- The task's text still carries its `due:` token, which says when.
-            for _, t in ipairs(due_ahead) do rows[#rows + 1] = task_line(t, " ") end
+            for _, t in ipairs(due_ahead) do rows[#rows + 1] = task_line(t, "open") end
             section(("%s %s to %s (%d)"):format(l.due, ahead.from, ahead.to, #due_ahead), rows)
         end
     end
