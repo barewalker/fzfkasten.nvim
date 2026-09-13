@@ -642,7 +642,9 @@ the notes are read against what was planned (see [The calendar](#the-calendar);
 
 Then the tasks, when `week.digest.tasks` is on: the ones finished in the week,
 by their `done:` stamp wherever they live, and the ones still open in the
-week's notes. Both go through your `tasks` settings, so `require_tag` applies —
+week's notes. Each links to its line (`[[active#^k7q2aa]]`) when the line
+carries an id, and to its note otherwise -- so a standing list's tasks do
+not all point at the same first line. Both go through your `tasks` settings, so `require_tag` applies —
 an untagged checkbox is inbox, not a task, here as everywhere. `labels` says
 what these headings read; the notes are yours and in your language, and the
 digest's own words can be too.
