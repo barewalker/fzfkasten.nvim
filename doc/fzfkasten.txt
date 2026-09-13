@@ -64,6 +64,21 @@ COMMANDS
 - FzfKastenLog: Browse recent daily/weekly notes by date in one picker --
   existing notes preview and open, a date with no note is created from its
   template. <ctrl-x> enters a date manually. (FzfKastenPickDailyDate is an alias.)
+- FzfKastenPanel: A menu of the commands that take an argument, with the
+  usual arguments filled in (digest and week notes for this week and last;
+  agenda for this week, this and next, last, when calendar.enabled; recent
+  notes; notes by tag; the graph pickers) and, last, the note panel.
+  panel.items adds entries: { label = "...", fn = function | "Ex command" }.
+- FzfKastenNotePanel: Pick a note, then open / backlinks / rename / delete.
+- FzfKastenRecent: Notes by when they were last written, newest first, with
+  preview. mtime, on purpose: the question is what was touched on this
+  machine. recent.limit (50), recent.ignore_dirs ("templates").
+- FzfKastenLinkToDaily: Yank a link to this line (minting its ^id like
+  FzfKastenYankLink) and write it into today's daily note too: after the
+  cursor of the window the daily is shown in, else at its end; through its
+  buffer when loaded (unsaved edits kept), else on disk; created from its
+  template when today's is missing. block_id.daily_bullet ("- ") goes in
+  front.
 - FzfKastenWeekNotes [week]: The notes dated in a week, earliest first, with
   preview -- whatever they are filed under, so a topic note dated by its
   frontmatter sits next to the dailies. `week` is nothing (this week), `-1`
