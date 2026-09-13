@@ -30,6 +30,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **Fzfkasten Panel**: A central menu for common actions (Open, Backlinks, Rename, Delete).
 - [x] **New Templated Notes**: Create new notes from predefined templates with interactive selection.
 - [x] **Log picker**: One picker (`:FzfKastenLog`) over recent days and weeks — existing notes preview and open, missing dates are created from a template, all in one place.
+- [x] **The calendar**: `:FzfKastenAgenda` browses a week of your calendar, `{{agenda}}` writes the day's events into a note from its template, and the week digest puts the week's events in front of its notes. Read through gcalcli by default, or any command that prints the same lines; cached, so a note's creation never waits on the network. See [The calendar](#the-calendar).
 - [x] **A week at a time**: `:FzfKastenWeekNotes` lists the notes dated in a week, whatever they are filed under; `:FzfKastenWeekDigest` lays them out in one buffer — outline, opening lines, and the tasks finished — as the material a weekly review is written from. See [Looking back over a week](#looking-back-over-a-week).
 - [x] **Claude Code Integration**: Optional. Sends notes and named prompts to the Claude Code running in a herdr or tmux pane — on this machine or over ssh — by typing into it. Disabled by default; see [Claude Code Integration](#claude-code-integration).
 - [x] **Link Aliasing**: `[[note|alias]]` syntax is supported across follow link, backlinks, and rename. Anchors too — `[[note#heading]]` for a section and `[[note#^id]]` for a single line — and all three read them alike.
@@ -95,15 +96,30 @@ Here is the default configuration. You can override any of these settings in the
       open = true,                -- true, false, "firefox {}", or a function
     },
   },
+  -- A calendar, read through a command. See "The calendar".
+  calendar = {
+    enabled = false,
+    name = nil,                   -- the display name gcalcli lists, or a list of them
+    gcalcli = "gcalcli",
+    cmd = nil,                    -- function(from, to, name) -> argv, instead of gcalcli
+    parse = nil,                  -- function(stdout) -> events, for other output
+    format = nil,                 -- function(event, day) -> the line it is shown as
+    bullet = "- ",
+    timeout = 15000,              -- ms to wait for the command
+    cache = { ttl = 900, dir = nil },
+    labels = { all_day = "all day", unavailable = "calendar unavailable" },
+  },
   -- A week of the collection. See "Looking back over a week".
   week = {
     ignore_dirs = { "templates" },
     digest = {
       lines = 8,                  -- body lines quoted per note; 0 for headings only
       tasks = true,               -- tasks finished in the week, and still open in its notes
+      calendar = true,            -- the week's events first, when calendar.enabled
       open = "full",              -- or "split", "vsplit", "tab"
       labels = {
         notes = "%d notes",
+        calendar = "Calendar",
         finished = "Finished this week",
         open = "Still open in this week's notes",
       },
@@ -235,6 +251,8 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
 *   **`:FzfKastenLog`**: One picker for the whole journal. Lists the recent days (`daily.lookback_days`) and weeks (`weekly.lookback_weeks`), each marked ✓ when its note already exists. Existing notes preview and open; a date or week with no note yet is created from its template on select — so browsing old notes and filling in a missed day are the same action. `<ctrl-x>` enters a date by hand for anything older than the window. (`:FzfKastenPickDailyDate` is a kept alias.)
 
 *   **`:FzfKastenWeekNotes [week]`** / **`:FzfKastenWeekDigest [week]`**: The notes dated in a week — as a picker, and as one buffer laying them out for a review. `week` is nothing (this week), `-1` (last week), `2026-W37`, or a date in it. See [Looking back over a week](#looking-back-over-a-week).
+
+*   **`:FzfKastenAgenda [week]`**: A week of your calendar, one event per row, or several weeks with `..` (`0..1` is this week and next). `<enter>` opens the daily note of that day, `<alt-i>` inserts the event's line where you were, `<ctrl-r>` fetches again. Takes the same `week` as the week commands. See [The calendar](#the-calendar).
 
 *   **`:FzfKastenFindDailyNotes`** / **`:FzfKastenFindWeeklyNotes`**: Open an `fzf-lua` picker over just the existing daily / weekly notes. `:FzfKastenLog` covers both with a preview and the ability to create, so these are mostly superseded, but they remain for browsing a single kind.
 
@@ -585,6 +603,10 @@ nothing; a note with more says `…`). A note that is sections all the way down
 (`# Commute`, `## outward`, `# Log`, the shape of a daily note) keeps all of
 them in the outline rather than losing the first to the section heading.
 
+With `calendar.enabled` on, the week's events come first, grouped by day, so
+the notes are read against what was planned (see [The calendar](#the-calendar);
+`week.digest.calendar = false` leaves them out).
+
 Then the tasks, when `week.digest.tasks` is on: the ones finished in the week,
 by their `done:` stamp wherever they live, and the ones still open in the
 week's notes. Both go through your `tasks` settings, so `require_tag` applies —
@@ -606,6 +628,98 @@ treesitter about a `nofile` buffer and folds it by indent instead -- so `zc`
 on a heading used to find no fold at all. The window is set to fold this way
 each time the digest is shown in it, and ufo is told to leave the buffer
 alone.
+
+## The calendar
+
+What a note is about is often what was on the calendar that day: the meeting
+the minutes are of, the visit the daily records. Fzfkasten reads the calendar
+through a command that lists its events — nothing in the plugin talks to a
+calendar service, which takes an account, a consent screen and a token, none
+of which belong in an editor.
+
+The default command is [gcalcli](https://github.com/insanum/gcalcli), which
+you install and authenticate outside Neovim:
+
+```
+uv tool install gcalcli          # or pipx, or your package manager
+gcalcli --client-id '<id>.apps.googleusercontent.com' --client-secret '<secret>' init
+gcalcli list                     # the display names, one of which goes below
+```
+
+gcalcli needs an OAuth client of your own (Google no longer lets it ship
+one); make it a *Desktop app*, and take the consent screen out of *Testing*
+status or its token expires every seven days. The token lands in
+`~/.local/share/gcalcli/oauth` — keep it out of your dotfiles, and
+`:checkhealth fzfkasten` will tell you if it is readable by others. The scope
+gcalcli asks for is read and write; fzfkasten only reads.
+
+```lua
+calendar = {
+  enabled = true,
+  name = "Hotbiz",     -- as `gcalcli list` shows it; a list reads several
+},
+```
+
+`name` is the calendar's **display name**, not its id — gcalcli matches names
+(exactly, then as a case-insensitive regex). Unset, every calendar gcalcli can
+see is read.
+
+Three things read it:
+
+*   **`:FzfKastenAgenda [week]`** — the week's events as a picker, the same
+    `week` argument as `:FzfKastenWeekNotes` (nothing, `-1`, `2026-W37`, a
+    date), or a span of weeks joined by `..`: `0..1` is this week and next,
+    `-1..0` last week and this, `2026-W37..2026-W39` three named ones.
+    A rule is drawn where today falls, and the days before it are dimmed, so
+    the eye finds today before it reads anything; selecting the rule opens
+    today's daily note.
+    `<enter>` opens that day's daily note, created from its template if
+    it is not there yet; `<alt-i>` inserts the event's line into the buffer
+    you came from, which is how a meeting note starts; `<ctrl-r>` fetches
+    again, past the cache.
+
+*   **`{{agenda}}` and `{{agenda_week}}`** in a template — the day's events,
+    or the week's grouped by day, one per line with `calendar.bullet` in
+    front. Only evaluated when the template names them, so a template without
+    them never runs the command. `{{agenda}}` supersedes the older
+    `notes.daily.use_external_cmd`, which still works.
+
+    ```markdown
+    # {{title}}
+
+    ## Agenda
+    {{agenda}}
+    ```
+
+*   **The week digest** — the week's events first, before the notes. See
+    [Looking back over a week](#looking-back-over-a-week).
+
+A line reads `13:00-14:00  会議 / 道場WG  @3F 会議室`, or `all day  title`
+with the span for an all-day event over several days (`all day (09-03..09-07)`).
+`calendar.format` is a function of your own for a different line, and
+`calendar.labels` rewords `all day`.
+
+**Cached.** A gcalcli call is about 0.6 seconds of network, and creating a
+daily note from its template must not pay that every time. A fetched list is
+kept for `calendar.cache.ttl` seconds (15 minutes), in memory and under
+`stdpath("cache")`, per command and range. When the command fails — offline,
+token expired, gcalcli gone — the last list is used whatever its age, and the
+line that reports it says when it was fetched: a stale agenda you can see the
+date of beats an empty one that looks like a free day. With nothing behind it
+at all, the picker says why, and `{{agenda}}` writes one line saying so into
+the note, where you can delete it.
+
+**Something other than gcalcli.** `calendar.cmd` is a function of `(from,
+to, name)` returning the argv to run — `to` is exclusive, both `YYYY-MM-DD` —
+and fzfkasten reads what it prints the way it reads gcalcli's `agenda --tsv`:
+a header naming the columns (`start_date`, `start_time`, `end_date`,
+`end_time`, `title`, and `location` / `id` / `calendar` when there), then one
+event per line, an all-day event with empty times and an end date the day
+*after* its last. A command that prints something else pairs with
+`calendar.parse`, a function of its output returning `{ date, start,
+end_date, stop, title, location, id, all_day }` per event. `khal list`,
+a curl of an iCal feed through a script, a fixture in the tests — anything
+that answers "what is on between these dates" fits.
 
 ## Tasks
 

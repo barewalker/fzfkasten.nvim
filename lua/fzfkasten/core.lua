@@ -69,6 +69,11 @@ function M.load_template(rel_path, title, time)
         day = os.date("%d", time),
         week = os.date("%V", time),
         time = os.date("%H:%M", time),
+        -- Functions, so the calendar is only asked when the template names
+        -- it: a call costs a network round trip (or a cache hit), and most
+        -- templates never mention it. They take no notice of the title.
+        agenda = function() return require('fzfkasten.calendar').agenda_text(time) end,
+        agenda_week = function() return require('fzfkasten.calendar').week_text(time) end,
     }
     for k, v in pairs(config.options.template_placeholders or {}) do
         placeholders[k] = v
