@@ -96,7 +96,12 @@ COMMANDS
   writable, named fzfkasten://week/<week> and reused; <enter> on a section
   opens its note, `q` closes; week.digest.open places it. Being an fzfkasten
   buffer, FzfKastenClaudeSendBuffer pastes it whole. week.digest.labels
-  rewords its own headings. It folds by its headings (`zc` on a `##` folds
+  rewords its own headings. It closes with the week.digest.ahead weeks after
+  this one -- their calendar and the open tasks due in them -- apart from
+  the week's own sections (0 for none). week.digest.sources adds a section
+  per entry: { label, fn = function(range, ahead) -> lines }, a mail index
+  or a tracker; one that fails puts a line saying so in its section. It
+  folds by its headings (`zc` on a `##` folds
   that note), by a foldexpr of its own: nvim-ufo will not fold a nofile
   buffer by treesitter, and the window is set to this fold each time the
   digest is shown.

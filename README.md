@@ -123,12 +123,17 @@ Here is the default configuration. You can override any of these settings in the
       lines = 8,                  -- body lines quoted per note; 0 for headings only
       tasks = true,               -- tasks finished in the week, and still open in its notes
       calendar = true,            -- the week's events first, when calendar.enabled
+      ahead = 1,                  -- weeks to look forward at the end; 0 for none
+      sources = {},               -- { label = "Mail", fn = function(range, ahead) ... }, see below
       open = "full",              -- or "split", "vsplit", "tab"
       labels = {
         notes = "%d notes",
         calendar = "Calendar",
         finished = "Finished this week",
         open = "Still open in this week's notes",
+        ahead = "Coming up",
+        due = "Due",
+        unavailable = "unavailable",
       },
     },
   },
@@ -633,6 +638,35 @@ reused when it is already open, and left writable — it is a draft as much as a
 view. `<enter>` on a section opens its note, `q` closes; `week.digest.open`
 says where it opens (`"full"`, `"split"`, `"vsplit"`, `"tab"`). Every `[[link]]`
 in it follows with `:FzfKastenFollowLink` or `gf`.
+
+**Then what is next.** The digest closes by looking forward: the calendar of
+the `week.digest.ahead` weeks after this one (one, by default) and the open
+tasks falling due in them, each a section of its own, apart from the week's
+own sections -- so what happened and what is coming are never read as one
+list. `ahead = 0` leaves them out.
+
+**Records other programs keep.** `week.digest.sources` adds a section per
+entry, between the tasks and the weeks ahead. Each is a label and a function
+of the week (`{ label, from, to }`, dates as `YYYY-MM-DD`) and the weeks ahead
+(the same shape, or nil) returning lines, or a string with newlines. A mail
+index, a ticket tracker, a git log — whatever knows what the week held:
+
+```lua
+week = {
+  digest = {
+    sources = {
+      { label = "Mail", fn = function(range)
+          return vim.fn.systemlist({ "leterejo-week", range.from, range.to })
+        end },
+    },
+  },
+},
+```
+
+A source that fails — raises, returns nothing usable — puts one line saying
+so in its section rather than taking the digest down with it. Headings inside
+what it returns should be `###`, since the section itself is `##`; they fold
+with the rest.
 
 It folds by its headings: `zc` on a `## 09-08 Tue` line folds that note's
 section, `zM` folds every note to its heading line. The folds are the digest's

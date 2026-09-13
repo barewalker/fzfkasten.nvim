@@ -231,6 +231,23 @@ M.defaults = {
    tasks = true,
    -- Put the week's calendar events first, when `calendar.enabled` is on.
    calendar = true,
+   -- How many weeks past the digest's own to look forward: their calendar
+   -- and the tasks falling due in them close the digest, apart from the
+   -- week's own sections, so what happened and what is next never read as
+   -- one list. 0 looks forward not at all.
+   ahead = 1,
+   -- Records of the week kept by other programs -- a mail index, a tracker
+   -- -- each a section of its own. `fn(range, ahead)` gets the week
+   -- (`{ label, from, to }`, "YYYY-MM-DD") and the weeks ahead (or nil) and
+   -- returns lines, or a string with newlines. One that fails puts one line
+   -- saying so in its section rather than taking the digest down.
+   --
+   --   sources = {
+   --     { label = "Mail", fn = function(range)
+   --         return vim.fn.systemlist({ "leterejo-week", range.from, range.to })
+   --       end },
+   --   },
+   sources = {},
    -- Where the digest opens: "full" (this window), "split", "vsplit", "tab".
    open = "full",
    -- What its own headings say. The notes are yours and in your language;
@@ -240,6 +257,9 @@ M.defaults = {
     calendar = "Calendar",
     finished = "Finished this week",
     open = "Still open in this week's notes",
+    ahead = "Coming up",
+    due = "Due",
+    unavailable = "unavailable",
    },
   },
  },

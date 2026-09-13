@@ -354,14 +354,58 @@ local function labels()
         calendar = l.calendar or "Calendar",
         finished = l.finished or "Finished this week",
         open = l.open or "Still open in this week's notes",
+        ahead = l.ahead or "Coming up",
+        due = l.due or "Due",
+        unavailable = l.unavailable or "unavailable",
     }
+end
+
+--- The weeks after `range`: from the day after its Sunday, `weeks` weeks on.
+--- @param range table from `M.range`
+--- @param weeks integer
+--- @return table `{ from, to, label }`, both "YYYY-MM-DD"
+function M.ahead_of(range, weeks)
+    local from = utils.days_from(range.monday, 7)
+    local to = utils.days_from(range.monday, 7 * weeks + 6)
+    return {
+        from = os.date("%Y-%m-%d", from),
+        to = os.date("%Y-%m-%d", to),
+        label = weeks == 1 and os.date("%G-W%V", from)
+            or (os.date("%G-W%V", from) .. ".." .. os.date("%G-W%V", to)),
+    }
+end
+
+--- What one of `week.digest.sources` says for `range`, as lines -- or one
+--- line saying why it could not. A source is somebody else's program (a
+--- mail index, a ticket tracker) reached through a function of yours, and a
+--- source that is down must not take the digest down with it.
+--- @param source table `{ label = string, fn = function(range, ahead) -> string[] }`
+--- @return string[]
+local function source_lines(source, range, ahead)
+    local l = labels()
+    if type(source.fn) ~= "function" then
+        return { ("(%s: `fn` is not a function)"):format(l.unavailable) }
+    end
+    local ok, lines = pcall(source.fn, range, ahead)
+    if not ok then
+        return { ("(%s: %s)"):format(l.unavailable, tostring(lines)) }
+    end
+    if type(lines) == "string" then
+        lines = vim.split(lines, "\n", { plain = true })
+    end
+    if type(lines) ~= "table" then
+        return { ("(%s: returned %s)"):format(l.unavailable, type(lines)) }
+    end
+    -- Trailing blank lines are the source's, not the digest's.
+    while #lines > 0 and vim.trim(lines[#lines]) == "" do lines[#lines] = nil end
+    return lines
 end
 
 --- The digest as lines, and which note each section is about.
 --- @param range table from `M.range`
 --- @param notes table[] from `M.notes`
---- @param opts table|nil `{ lines = integer, tasks = boolean, calendar = boolean }`,
----   defaulting to `week.digest`
+--- @param opts table|nil `{ lines = integer, tasks = boolean, calendar = boolean,
+---   ahead = integer, sources = table[] }`, defaulting to `week.digest`
 --- @return string[] lines
 --- @return table<integer, table> sections line number (1-based) of each note's
 ---   heading -> that note
@@ -372,8 +416,17 @@ function M.digest_lines(range, notes, opts)
     local weekly = config.options.notes.weekly
     local weekly_name = config.options.transform.new_file_name(os.date(weekly.format, range.monday))
 
+    local weeks_ahead = tonumber(o.ahead) or 0
+    local ahead = weeks_ahead > 0 and M.ahead_of(range, weeks_ahead) or nil
+
     local out, sections = {}, {}
     local function put(line) out[#out + 1] = line end
+    local function section(title, rows)
+        put("")
+        put("## " .. title)
+        put("")
+        for _, row in ipairs(rows) do put(row) end
+    end
 
     put(("# %s  %s to %s"):format(range.label, range.from, range.to))
     put("")
@@ -415,6 +468,12 @@ function M.digest_lines(range, notes, opts)
         end
     end
 
+    local function task_line(t, mark)
+        local text = t.priority and ("(%s) %s"):format(t.priority, t.text) or t.text
+        return ("- [%s] %s  ([[%s]])"):format(mark, text, utils.note_name(t.rel))
+    end
+
+    local due_ahead = {}
     if o.tasks ~= false then
         local tasks = require('fzfkasten.tasks')
         local all = tasks.collect({ done = true, since_days = false, sort = "added" })
@@ -423,27 +482,53 @@ function M.digest_lines(range, notes, opts)
             local day = t.done_at and t.done_at:sub(1, 10)
             if t.done and day and day >= range.from and day <= range.to then
                 finished[#finished + 1] = t
-            elseif not t.done and not t.cancelled and in_week[t.rel] then
-                open[#open + 1] = t
+            elseif not t.done and not t.cancelled then
+                if in_week[t.rel] then
+                    open[#open + 1] = t
+                end
+                local due = t.due and t.due:sub(1, 10)
+                if ahead and due and due >= ahead.from and due <= ahead.to then
+                    due_ahead[#due_ahead + 1] = t
+                end
             end
         end
         table.sort(finished, function(a, b) return a.done_at < b.done_at end)
+        table.sort(due_ahead, function(a, b) return a.due < b.due end)
 
-        local function task_line(t, mark)
-            local text = t.priority and ("(%s) %s"):format(t.priority, t.text) or t.text
-            return ("- [%s] %s  ([[%s]])"):format(mark, text, utils.note_name(t.rel))
-        end
         if #finished > 0 then
-            put("")
-            put(("## %s (%d)"):format(l.finished, #finished))
-            put("")
-            for _, t in ipairs(finished) do put(task_line(t, "x")) end
+            local rows = {}
+            for _, t in ipairs(finished) do rows[#rows + 1] = task_line(t, "x") end
+            section(("%s (%d)"):format(l.finished, #finished), rows)
         end
         if #open > 0 then
-            put("")
-            put(("## %s (%d)"):format(l.open, #open))
-            put("")
-            for _, t in ipairs(open) do put(task_line(t, " ")) end
+            local rows = {}
+            for _, t in ipairs(open) do rows[#rows + 1] = task_line(t, " ") end
+            section(("%s (%d)"):format(l.open, #open), rows)
+        end
+    end
+
+    -- Somebody else's records of the week: a mail index, a tracker. Each is a
+    -- section of its own, in the order given.
+    for _, source in ipairs(o.sources or {}) do
+        if type(source) == "table" then
+            section(source.label or "?", source_lines(source, range, ahead))
+        end
+    end
+
+    -- Then what is coming: the review ends by looking forward, and the next
+    -- weeks' calendar and the tasks falling due in them are what it looks at.
+    -- Kept apart from the week's own sections so that "what happened" and
+    -- "what is next" are never read as one list.
+    if ahead then
+        if o.calendar ~= false and calendar.enabled() then
+            local rows, count = calendar.range_lines(ahead.from, ahead.to)
+            section(("%s (%d)  %s to %s"):format(l.ahead, count, ahead.from, ahead.to), rows)
+        end
+        if #due_ahead > 0 then
+            local rows = {}
+            -- The task's text still carries its `due:` token, which says when.
+            for _, t in ipairs(due_ahead) do rows[#rows + 1] = task_line(t, " ") end
+            section(("%s %s to %s (%d)"):format(l.due, ahead.from, ahead.to, #due_ahead), rows)
         end
     end
 
