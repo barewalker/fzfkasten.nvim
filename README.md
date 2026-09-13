@@ -30,6 +30,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **Fzfkasten Panel**: A central menu for common actions (Open, Backlinks, Rename, Delete).
 - [x] **New Templated Notes**: Create new notes from predefined templates with interactive selection.
 - [x] **Log picker**: One picker (`:FzfKastenLog`) over recent days and weeks — existing notes preview and open, missing dates are created from a template, all in one place.
+- [x] **A week at a time**: `:FzfKastenWeekNotes` lists the notes dated in a week, whatever they are filed under; `:FzfKastenWeekDigest` lays them out in one buffer — outline, opening lines, and the tasks finished — as the material a weekly review is written from. See [Looking back over a week](#looking-back-over-a-week).
 - [x] **Claude Code Integration**: Optional. Sends notes and named prompts to the Claude Code running in a herdr or tmux pane — on this machine or over ssh — by typing into it. Disabled by default; see [Claude Code Integration](#claude-code-integration).
 - [x] **Link Aliasing**: `[[note|alias]]` syntax is supported across follow link, backlinks, and rename. Anchors too — `[[note#heading]]` for a section and `[[note#^id]]` for a single line — and all three read them alike.
 - [x] **Filename Sanitization**: Unicode-safe default (preserves CJK) with a user-overridable `transform.sanitize_filename` hook.
@@ -92,6 +93,20 @@ Here is the default configuration. You can override any of these settings in the
     export = {                    -- :FzfKastenGraphExport, see "Drawing the graph"
       path = vim.fn.stdpath("cache") .. "/fzfkasten/graph.html",
       open = true,                -- true, false, "firefox {}", or a function
+    },
+  },
+  -- A week of the collection. See "Looking back over a week".
+  week = {
+    ignore_dirs = { "templates" },
+    digest = {
+      lines = 8,                  -- body lines quoted per note; 0 for headings only
+      tasks = true,               -- tasks finished in the week, and still open in its notes
+      open = "full",              -- or "split", "vsplit", "tab"
+      labels = {
+        notes = "%d notes",
+        finished = "Finished this week",
+        open = "Still open in this week's notes",
+      },
     },
   },
   transform = {
@@ -218,6 +233,8 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
 *   **`:FzfKastenNewNote`**: Creates a new note. You will be prompted for a title and then presented with an `fzf-lua` picker to select an optional template from your `home/templates` directory. If no template is selected, it defaults to a basic note structure.
 
 *   **`:FzfKastenLog`**: One picker for the whole journal. Lists the recent days (`daily.lookback_days`) and weeks (`weekly.lookback_weeks`), each marked ✓ when its note already exists. Existing notes preview and open; a date or week with no note yet is created from its template on select — so browsing old notes and filling in a missed day are the same action. `<ctrl-x>` enters a date by hand for anything older than the window. (`:FzfKastenPickDailyDate` is a kept alias.)
+
+*   **`:FzfKastenWeekNotes [week]`** / **`:FzfKastenWeekDigest [week]`**: The notes dated in a week — as a picker, and as one buffer laying them out for a review. `week` is nothing (this week), `-1` (last week), `2026-W37`, or a date in it. See [Looking back over a week](#looking-back-over-a-week).
 
 *   **`:FzfKastenFindDailyNotes`** / **`:FzfKastenFindWeeklyNotes`**: Open an `fzf-lua` picker over just the existing daily / weekly notes. `:FzfKastenLog` covers both with a preview and the ability to create, so these are mostly superseded, but they remain for browsing a single kind.
 
@@ -489,6 +506,106 @@ mosh session, which is how a collection on another machine is usually reached �
 does not reach for `xdg-open` at all: it would fail a moment later, once Neovim
 had stopped watching, and the command would appear to do nothing. It says there
 is no display and names the file instead.
+
+## Looking back over a week
+
+A weekly review starts with "what did I write this week", and no picker
+answered that. The finder ranks by name; the log picker walks the journal by
+date, but only the journal; a note filed under a topic is dated by its
+frontmatter, which nothing read. `:FzfKastenWeekNotes` reads it:
+
+```
+:FzfKastenWeekNotes            " this week
+:FzfKastenWeekNotes -1         " last week -- the usual one on a Monday
+:FzfKastenWeekNotes 2026-W37   " an ISO week (2026-w37, 2026W37 too)
+:FzfKastenWeekNotes 2026-09-10 " the week that day falls in
+```
+
+A week runs Monday to Sunday, the ISO way, so it is the same week
+`:FzfKastenWeekly` names. The picker lists the week's notes earliest first,
+previewed; `<enter>` opens one, `<ctrl-d>` opens the digest of the same week.
+
+**A note is dated the way tasks are dated** — the filename (`2026-09-08.md`),
+then the frontmatter keys in `tasks.date_keys`, and a `tasks.date` hook of
+yours first of all. Never mtime, for the reason given under [How a note is
+dated](#how-a-note-is-dated): in a git-backed collection it says when the file
+synced, not when the note was written. A note with no date is in no week.
+Directories in `week.ignore_dirs` are left out, and so is the week's own
+weekly note: it is what the review is written into, not what it is written
+from.
+
+Reading every note's frontmatter is one `ripgrep` pass over the collection
+(about 20ms for 500 notes; 3.5 seconds if it were a `readfile` per note on
+WSL2). With a `tasks.date` hook set every note is read instead, since the hook
+is asked first and can look anywhere in the note.
+
+### The digest — `:FzfKastenWeekDigest`
+
+The same notes laid out in one buffer, to be read down, pruned, and pasted
+into the weekly note — or handed to the Claude pane with
+`:FzfKastenClaudeSendBuffer` as the material for a review written there.
+
+```
+# 2026-W37  2026-09-07 to 2026-09-13
+
+5 notes, [[2026-W37]]
+
+## 09-08 Tue  [[2026-09-08]]
+
+- Commute
+  - outward
+  - return
+- Log
+
+> 08:30 - 09:00 #RTT 実験片付け
+> 09:00 - 12:00 #TCM 厚み誤差検証
+> …
+
+## 09-10 Thu  [[lathe]] -- 旋盤の選定
+
+- 候補
+- 決めたこと
+
+> Bought one.
+
+## Finished this week (2)
+
+- [x] (A) 校正係数の確認 #todo  ([[active]])
+- [x] 見積を送る #todo  ([[2026-09-09]])
+
+## Still open in this week's notes (1)
+
+- [ ] 図面を直す #todo  ([[2026-09-10]])
+```
+
+Each note is a section: the day, a link to the note, and — when the note opens
+with a single `# Title` — that title. Under it, the note's headings as an
+outline, and its first `week.digest.lines` body lines quoted (`0` quotes
+nothing; a note with more says `…`). A note that is sections all the way down
+(`# Commute`, `## outward`, `# Log`, the shape of a daily note) keeps all of
+them in the outline rather than losing the first to the section heading.
+
+Then the tasks, when `week.digest.tasks` is on: the ones finished in the week,
+by their `done:` stamp wherever they live, and the ones still open in the
+week's notes. Both go through your `tasks` settings, so `require_tag` applies —
+an untagged checkbox is inbox, not a task, here as everywhere. `labels` says
+what these headings read; the notes are yours and in your language, and the
+digest's own words can be too.
+
+The buffer is a scratch buffer named for the week (`fzfkasten://week/2026-W37`),
+reused when it is already open, and left writable — it is a draft as much as a
+view. `<enter>` on a section opens its note, `q` closes; `week.digest.open`
+says where it opens (`"full"`, `"split"`, `"vsplit"`, `"tab"`). Every `[[link]]`
+in it follows with `:FzfKastenFollowLink` or `gf`.
+
+It folds by its headings: `zc` on a `## 09-08 Tue` line folds that note's
+section, `zM` folds every note to its heading line. The folds are the digest's
+own (a foldexpr keyed on `#`s, not treesitter's), because the buffer is a
+scratch buffer and nvim-ufo, which many markdown setups run, will not ask
+treesitter about a `nofile` buffer and folds it by indent instead -- so `zc`
+on a heading used to find no fold at all. The window is set to fold this way
+each time the digest is shown in it, and ufo is told to leave the buffer
+alone.
 
 ## Tasks
 

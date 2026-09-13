@@ -33,6 +33,10 @@ M.log = function() require('fzfkasten.pickers').log() end
 -- the log picker, but the old command name still works.
 M.pick_daily_date = function() require('fzfkasten.pickers').log() end
 M.find_weekly_notes = function() require('fzfkasten.pickers').find_weekly_notes_picker() end
+-- `week` names the week: nothing for this one, `-1` for last, `2026-W37`, or a
+-- date in it. See `week.range`.
+M.week_notes = function(week) require('fzfkasten.week').pick(week) end
+M.week_digest = function(week) require('fzfkasten.week').digest(week) end
 M.tasks = function() require('fzfkasten.tasks').pick() end
 M.task_toggle = function() require('fzfkasten.tasks').toggle() end
 -- With text, capture it. Without, prompt: bound to a key, one press then type
