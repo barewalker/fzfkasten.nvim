@@ -64,6 +64,27 @@ COMMANDS
 - FzfKastenLog: Browse recent daily/weekly notes by date in one picker --
   existing notes preview and open, a date with no note is created from its
   template. <ctrl-x> enters a date manually. (FzfKastenPickDailyDate is an alias.)
+- FzfKastenWeekNotes [week]: The notes dated in a week, earliest first, with
+  preview -- whatever they are filed under, so a topic note dated by its
+  frontmatter sits next to the dailies. `week` is nothing (this week), `-1`
+  (last week), `2026-W37`, or a date in it. A week is Monday to Sunday, the
+  ISO week FzfKastenWeekly names. A note is dated the way tasks are: the
+  filename, then the tasks.date_keys frontmatter (read in one rg pass), a
+  tasks.date hook first of all, never mtime. week.ignore_dirs are left out,
+  and so is the week's own weekly note. <ctrl-d> opens the digest instead.
+- FzfKastenWeekDigest [week]: The same notes laid out in one scratch buffer,
+  the material a weekly review is written from: a section per note (day, a
+  [[link]], the note's title when it opens with a single `#`), its headings
+  as an outline, its first week.digest.lines body lines quoted; then the
+  tasks finished in the week by their done: stamp and the ones still open in
+  the week's notes (week.digest.tasks; require_tag applies). The buffer is
+  writable, named fzfkasten://week/<week> and reused; <enter> on a section
+  opens its note, `q` closes; week.digest.open places it. Being an fzfkasten
+  buffer, FzfKastenClaudeSendBuffer pastes it whole. week.digest.labels
+  rewords its own headings. It folds by its headings (`zc` on a `##` folds
+  that note), by a foldexpr of its own: nvim-ufo will not fold a nofile
+  buffer by treesitter, and the window is set to this fold each time the
+  digest is shown.
 - FzfKastenFindNotes: Search for notes. A query beginning with `/` is romaji:
   `/kaigi` narrows the list to notes matching 会議. Anything else is fzf's own
   fuzzy matching, unchanged. A note matches on its path and its own headings

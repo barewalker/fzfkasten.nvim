@@ -202,6 +202,20 @@ local function note_date(path, lines, fm)
     return nil
 end
 
+--- The date a note records, read the way `since_days` reads it: the `date`
+--- hook first, then the filename, then the frontmatter keys in `date_keys`.
+--- nil when it records none -- never mtime, for the reason `note_date` gives.
+---
+--- Public because the week view asks the same question about every note, and
+--- two answers to "when is this note from" would be one too many.
+--- @param path string
+--- @param lines string[] the note's lines; only the head is needed
+--- @return string|nil "YYYY-MM-DD"
+function M.date_of(path, lines)
+    local fm = parse_frontmatter(lines or {})
+    return note_date(path, lines or {}, fm)
+end
+
 local function is_falsy(v)
     return v == "false" or v == "no" or v == "off"
 end

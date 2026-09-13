@@ -70,6 +70,14 @@ local function note_rel_paths(listed)
     return rels
 end
 
+--- Every note under `home`, relative to it. The finder's own listing, for the
+--- views that are not pickers -- the week view walks the collection too, and
+--- one walker that knows why it is rg is better than two.
+--- @return string[]
+function M.all_notes()
+    return note_rel_paths(rg_lines(rg_start(rg_files_args())))
+end
+
 -- Every note's headings, keyed by the path `note_rel_paths` gives -- or nil when
 -- ripgrep cannot answer and the caller has to read the files itself.
 --

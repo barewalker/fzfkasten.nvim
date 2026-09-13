@@ -148,6 +148,32 @@ M.defaults = {
     open = true,
   },
  },
+ -- A week of the collection: `:FzfKastenWeekNotes` lists the notes dated in a
+ -- week, `:FzfKastenWeekDigest` lays them out in one buffer -- the material a
+ -- weekly review is written from. A note's date is read the way `tasks` reads
+ -- it: the filename, then the `tasks.date_keys` frontmatter, never mtime.
+ week = {
+  -- Directories (relative to `home`) left out. Templates carry a date
+  -- placeholder, not a date, and are not notes.
+  ignore_dirs = { "templates" },
+  digest = {
+   -- How many lines of each note's body the digest quotes, after its outline
+   -- of headings. 0 quotes nothing -- headings only.
+   lines = 8,
+   -- Append the tasks finished in the week (by their done: stamp) and the
+   -- ones still open in the week's notes.
+   tasks = true,
+   -- Where the digest opens: "full" (this window), "split", "vsplit", "tab".
+   open = "full",
+   -- What its own headings say. The notes are yours and in your language;
+   -- the digest's own words can be too.
+   labels = {
+    notes = "%d notes",
+    finished = "Finished this week",
+    open = "Still open in this week's notes",
+   },
+  },
+ },
  -- Tasks are plain markdown checkboxes inside your notes -- there is no index
  -- and no separate task file, so any other markdown editor (including mobile
  -- git clients) can tick a box and fzfkasten will see it on the next scan.
