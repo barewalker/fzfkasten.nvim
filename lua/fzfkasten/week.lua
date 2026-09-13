@@ -351,6 +351,7 @@ local function labels()
     local l = (options().digest or {}).labels or {}
     return {
         notes = l.notes or "%d notes",
+        calendar = l.calendar or "Calendar",
         finished = l.finished or "Finished this week",
         open = l.open or "Still open in this week's notes",
     }
@@ -359,8 +360,8 @@ end
 --- The digest as lines, and which note each section is about.
 --- @param range table from `M.range`
 --- @param notes table[] from `M.notes`
---- @param opts table|nil `{ lines = integer, tasks = boolean }`, defaulting to
----   `week.digest`
+--- @param opts table|nil `{ lines = integer, tasks = boolean, calendar = boolean }`,
+---   defaulting to `week.digest`
 --- @return string[] lines
 --- @return table<integer, table> sections line number (1-based) of each note's
 ---   heading -> that note
@@ -377,6 +378,17 @@ function M.digest_lines(range, notes, opts)
     put(("# %s  %s to %s"):format(range.label, range.from, range.to))
     put("")
     put(("%s, [[%s]]"):format(l.notes:format(#notes), weekly_name))
+
+    -- The calendar first: it is the frame the notes were written inside, and
+    -- a review reads "what was planned" before "what was written".
+    local calendar = require('fzfkasten.calendar')
+    if o.calendar ~= false and calendar.enabled() then
+        local rows, count = calendar.range_lines(range.from, range.to)
+        put("")
+        put(("## %s (%d)"):format(l.calendar, count))
+        put("")
+        for _, row in ipairs(rows) do put(row) end
+    end
 
     local in_week = {}
     for _, n in ipairs(notes) do

@@ -255,7 +255,7 @@ describe("health: sections", function()
         end
         assert.are.same({
             "Neovim", "Configuration", "Dependencies",
-            "Templates", "Tasks", "Optional integrations",
+            "Templates", "Tasks", "Calendar", "Optional integrations",
         }, sections)
     end)
 

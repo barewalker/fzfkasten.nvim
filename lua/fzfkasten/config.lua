@@ -148,6 +148,54 @@ M.defaults = {
     open = true,
   },
  },
+ -- A calendar, read through a command that lists its events. `:FzfKastenAgenda`
+ -- browses them, `{{agenda}}` / `{{agenda_week}}` write them into a note from
+ -- its template, and the week digest puts them next to the notes. The default
+ -- command is gcalcli (https://github.com/insanum/gcalcli), set up and
+ -- authenticated outside Neovim; anything that prints the same TSV, or a
+ -- `parse` of your own, can stand in for it.
+ calendar = {
+  -- Off until you say so, so that a collection without a calendar never runs
+  -- a command that is not there.
+  enabled = false,
+  -- The calendar's display name as gcalcli lists it (`gcalcli list`), or a
+  -- list of them. gcalcli matches names, not ids. nil reads every calendar
+  -- gcalcli can see.
+  name = nil,
+  -- The executable, when gcalcli is not on PATH under that name.
+  gcalcli = "gcalcli",
+  -- function(from, to, name) -> argv listing the events from `from` up to
+  -- but not including `to`, both "YYYY-MM-DD", as gcalcli's `agenda --tsv`
+  -- prints them: a header naming the columns (start_date, start_time,
+  -- end_date, end_time, title, and location / id / calendar when present),
+  -- then one event per line. nil builds the gcalcli command.
+  cmd = nil,
+  -- function(stdout) -> events, for a command that prints something else.
+  -- Each event is { date, start, end_date, stop, title, location, id,
+  -- all_day }; `start`/`stop` are "HH:MM" or nil for an all-day event.
+  parse = nil,
+  -- function(event, day) -> string, the line an event is shown as. nil
+  -- writes "13:00-14:00  title  @location", or "all day  title".
+  format = nil,
+  -- Written in front of each event in `{{agenda}}` and the digest.
+  bullet = "- ",
+  -- How long to wait for the command, in milliseconds. gcalcli takes about
+  -- 0.6s; a stalled network must not stall a note being created.
+  timeout = 15000,
+  cache = {
+   -- Seconds a fetched list is reused for. Opening a daily note from its
+   -- template must not cost a network round trip every time, and a week of
+   -- events does not change by the minute. When the command fails, the last
+   -- list is used whatever its age, marked as of when it was fetched.
+   ttl = 900,
+   -- Where the lists are kept. nil is under stdpath("cache").
+   dir = nil,
+  },
+  labels = {
+   all_day = "all day",
+   unavailable = "calendar unavailable",
+  },
+ },
  -- A week of the collection: `:FzfKastenWeekNotes` lists the notes dated in a
  -- week, `:FzfKastenWeekDigest` lays them out in one buffer -- the material a
  -- weekly review is written from. A note's date is read the way `tasks` reads
@@ -163,12 +211,15 @@ M.defaults = {
    -- Append the tasks finished in the week (by their done: stamp) and the
    -- ones still open in the week's notes.
    tasks = true,
+   -- Put the week's calendar events first, when `calendar.enabled` is on.
+   calendar = true,
    -- Where the digest opens: "full" (this window), "split", "vsplit", "tab".
    open = "full",
    -- What its own headings say. The notes are yours and in your language;
    -- the digest's own words can be too.
    labels = {
     notes = "%d notes",
+    calendar = "Calendar",
     finished = "Finished this week",
     open = "Still open in this week's notes",
    },

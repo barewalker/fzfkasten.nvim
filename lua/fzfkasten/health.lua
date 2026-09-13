@@ -257,12 +257,56 @@ local function check_tasks()
     end
 end
 
+local function check_calendar()
+    health.start("Calendar")
+    local o = config.options.calendar or {}
+    if not o.enabled then
+        health.info("calendar.enabled is false: :FzfKastenAgenda, {{agenda}} and the digest's "
+            .. "calendar section are off.")
+        return
+    end
+    if type(o.cmd) == "function" then
+        health.ok("calendar.cmd is a function of your own; gcalcli is not consulted.")
+        return
+    end
+    local exe = o.gcalcli or "gcalcli"
+    if vim.fn.executable(exe) ~= 1 then
+        health.error("`" .. exe .. "` is not on PATH", {
+            "Install gcalcli (https://github.com/insanum/gcalcli) and run `gcalcli init`,",
+            "or point calendar.gcalcli at it, or give calendar.cmd a command of your own.",
+        })
+        return
+    end
+    health.ok("gcalcli: " .. exe)
+    local token = vim.fn.expand("~/.local/share/gcalcli/oauth")
+    if vim.fn.filereadable(token) == 1 then
+        local mode = vim.fn.getfperm(token)
+        if mode:sub(4) ~= "------" then
+            health.warn("The gcalcli token (" .. token .. ") is readable by others: " .. mode, {
+                "chmod 600 " .. token,
+            })
+        end
+    else
+        health.warn("No gcalcli token at " .. token, {
+            "Run `gcalcli --client-id ... --client-secret ... init` once; every fetch fails until then.",
+        })
+    end
+    local names = o.name
+    if type(names) == "string" then names = { names } end
+    if names and #names > 0 then
+        health.ok("calendar.name: " .. table.concat(names, ", ") .. " (matched against `gcalcli list`)")
+    else
+        health.info("calendar.name is unset, so every calendar gcalcli can see is read.")
+    end
+end
+
 function M.check()
     check_neovim()
     check_setup()
     check_dependencies()
     check_templates()
     check_tasks()
+    check_calendar()
     check_optional()
 end
 

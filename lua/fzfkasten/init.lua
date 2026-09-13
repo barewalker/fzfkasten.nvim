@@ -37,6 +37,8 @@ M.find_weekly_notes = function() require('fzfkasten.pickers').find_weekly_notes_
 -- date in it. See `week.range`.
 M.week_notes = function(week) require('fzfkasten.week').pick(week) end
 M.week_digest = function(week) require('fzfkasten.week').digest(week) end
+M.agenda = function(week) require('fzfkasten.calendar').pick(week) end
+M.calendar_events = function(from, to, opts) return require('fzfkasten.calendar').fetch(from, to, opts) end
 M.tasks = function() require('fzfkasten.tasks').pick() end
 M.task_toggle = function() require('fzfkasten.tasks').toggle() end
 -- With text, capture it. Without, prompt: bound to a key, one press then type

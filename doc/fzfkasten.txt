@@ -85,6 +85,20 @@ COMMANDS
   that note), by a foldexpr of its own: nvim-ufo will not fold a nofile
   buffer by treesitter, and the window is set to this fold each time the
   digest is shown.
+- FzfKastenAgenda [week]: A week of your calendar, one event per row; the
+  same `week` as FzfKastenWeekNotes, or a span of weeks joined by `..`
+  (`0..1` is this week and next, `-1..0` last week and this). A rule marks
+  where today falls and earlier days are dimmed. <enter> opens that day's daily note
+  (created from its template when missing), <alt-i> inserts the event's line
+  into the buffer you came from, <ctrl-r> fetches again past the cache. Read
+  through a command -- gcalcli by default (calendar.name is the display name
+  `gcalcli list` shows, not an id; calendar.cmd / calendar.parse for anything
+  else that lists events) -- and off until calendar.enabled is true. The
+  list is cached calendar.cache.ttl seconds; when the command fails the last
+  list is shown with the time it was fetched. `{{agenda}}` and
+  `{{agenda_week}}` in a template write the day's / week's events into a new
+  note (only evaluated when named), and the week digest puts the week's
+  events before its notes (week.digest.calendar).
 - FzfKastenFindNotes: Search for notes. A query beginning with `/` is romaji:
   `/kaigi` narrows the list to notes matching 会議. Anything else is fzf's own
   fuzzy matching, unchanged. A note matches on its path and its own headings
