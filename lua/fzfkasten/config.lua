@@ -83,6 +83,9 @@ M.defaults = {
      -- already says what it refers to. The tags are dropped from the alias
      -- either way -- see `pickers.link_alias`.
      alias = false,
+     -- Written in front of the link `:FzfKastenLinkToDaily` puts into the
+     -- daily note. "- " makes it a list item; "" pastes the bare link.
+     daily_bullet = "- ",
      -- Cut the alias to this many characters, an ellipsis standing for the
      -- rest. Counted in characters, not bytes, so a Japanese line is cut where
      -- it looks like it is. nil writes the text whole. Only read when `alias`
@@ -147,6 +150,21 @@ M.defaults = {
     -- `false` writes the file and only says where it is.
     open = true,
   },
+ },
+ -- `:FzfKastenRecent`: the notes written most recently, by mtime -- the one
+ -- place mtime is the right clock, since the question is what was touched on
+ -- this machine and not when a note is from.
+ recent = {
+  limit = 50,
+  ignore_dirs = { "templates" },
+ },
+ -- `:FzfKastenPanel` lists the commands that take an argument, with the usual
+ -- arguments filled in (this week, last week, this week and next), and reaches
+ -- the note panel. `items` adds your own: `{ label = "...", fn = function }` or
+ -- `{ label = "...", fn = "FzfKastenAgenda -2..0" }` (an Ex command), or a
+ -- function returning such a list.
+ panel = {
+  items = {},
  },
  -- A calendar, read through a command that lists its events. `:FzfKastenAgenda`
  -- browses them, `{{agenda}}` / `{{agenda_week}}` write them into a note from

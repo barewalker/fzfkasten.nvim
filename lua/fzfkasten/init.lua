@@ -9,6 +9,11 @@ M.insert_link = function() require('fzfkasten.pickers').insert_link() end
 M.search_content = function() require('fzfkasten.pickers').search_content() end
 M.new_note = function() require('fzfkasten.core').create_new_note_interactively() end
 M.panel = function() require('fzfkasten.pickers').panel() end
+M.note_panel = function() require('fzfkasten.pickers').note_panel() end
+M.recent = function() require('fzfkasten.pickers').recent() end
+M.recent_notes = function(limit) return require('fzfkasten.pickers').recent_notes(limit) end
+-- Writes to two buffers: the id into this one, the link into the daily.
+M.link_to_daily = function() require('fzfkasten.pickers').link_to_daily() end
 M.follow_link = function() require('fzfkasten.pickers').follow_link() end
 M.goto_link = function() require('fzfkasten.pickers').goto_link() end
 -- Mints the id on the line under the cursor, so it writes to the buffer -- the

@@ -96,6 +96,13 @@ Here is the default configuration. You can override any of these settings in the
       open = true,                -- true, false, "firefox {}", or a function
     },
   },
+  recent = {
+    limit = 50,                   -- how many :FzfKastenRecent lists
+    ignore_dirs = { "templates" },
+  },
+  panel = {
+    items = {},                   -- your own entries: { label = "...", fn = function | "Ex command" }
+  },
   -- A calendar, read through a command. See "The calendar".
   calendar = {
     enabled = false,
@@ -267,6 +274,12 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
     { "gf", "<cmd>FzfKastenGotoLink<CR>", ft = "markdown", desc = "Follow wikilink / gf" }
     ```
 
+*   **`:FzfKastenPanel`**: A menu of the commands that take an argument, with the usual arguments filled in — the digest and the week's notes for this week and last, the agenda for this week, this and next, and last, the recent notes, the graph pickers — and, last, the note panel (`:FzfKastenNotePanel`): pick a note, then open it, list its backlinks, rename or delete it. `panel.items` adds entries of your own (`{ label = "...", fn = "FzfKastenAgenda -2..0" }` or a function). The one-shot commands are not here on purpose: they are a key each, and a menu in front of them is a keystroke more.
+
+*   **`:FzfKastenRecent`**: The notes written most recently, newest first, with preview — by mtime, which is the right clock for "what did I touch lately" even though it is the wrong one for "when is this note from" (a git checkout rewrites it). `recent.limit` (50) and `recent.ignore_dirs` (`templates`).
+
+*   **`:FzfKastenLinkToDaily`**: Yank a link to the line the cursor is on, as `:FzfKastenYankLink` does, and write it into today's daily note as well — after the cursor of the window the daily is open in when it is on screen, at its end otherwise, and created from its template first when today's does not exist yet. The link goes through the daily's buffer when it is loaded, so unsaved edits there are kept. `block_id.daily_bullet` (`"- "`) is written in front of it. Four moves (yank, switch, paste, switch back) become one, for the case where a line in the minutes or a task list is what the day's thread is about.
+
 *   **`:FzfKastenYankLink`**: Yank a link to the line the cursor is on. It mints a `^id` at the end of that line if it carries none, writes it into the buffer, and puts `[[note#^id]]` in the yank registers — so you copy the link from the note that holds the task, and paste it into the note that refers to it. An id already on the line is reused, so yanking twice writes the same link twice rather than a second id.
 
     Following such a link (`:FzfKastenFollowLink`, or `gf`) puts the cursor on the line carrying that id, wherever it has moved to in the note and however it has been reworded since. This is for a task no heading identifies: a meeting note whose `## その他, 議論` holds three unrelated tasks cannot be pointed into with `[[note#その他, 議論]]`, because that anchor names all three.
@@ -283,6 +296,7 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
       alphabet = "abcdefghijklmnopqrstuvwxyz0123456789",
       alias = false,                 -- carry the line's text into the link
       alias_max = 40,                -- cutting it to this many characters
+      daily_bullet = "- ",           -- in front of the link :FzfKastenLinkToDaily writes
     }
     ```
 

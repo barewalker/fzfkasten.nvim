@@ -728,7 +728,165 @@ function M.show_backlinks(filepath)
     }))
 end
 
+--- Notes by when they were last written, newest first: `{ rel, mtime }`.
+---
+--- mtime is the right clock here, though the task scanner and the week view
+--- refuse it: they ask when a note is *from*, which a git checkout lies about,
+--- and this asks what was touched on this machine lately, which is exactly
+--- what mtime records. One `find` over the collection rather than a stat per
+--- note -- the WSL2 number again (see `note_rel_paths`) -- with a walk in
+--- Lua where `find` is not there.
+--- @param limit integer|nil how many; nil for all
+--- @return table[]
+function M.recent_notes(limit)
+    local home = config.options.home
+    local ext = config.options.extension
+    local o = config.options.recent or {}
+    local ignore = o.ignore_dirs or {}
+    local function ignored(rel)
+        for _, dir in ipairs(ignore) do
+            if rel == dir or rel:sub(1, #dir + 1) == dir .. "/" then return true end
+        end
+        return false
+    end
+
+    local found = {}
+    local listed
+    if vim.fn.executable("find") == 1 then
+        local ok, handle = pcall(vim.system, { "find", ".", "-name", ".git", "-prune", "-o",
+            "-type", "f", "-name", "*." .. ext, "-printf", "%T@\t%P\n" }, { cwd = home, text = true })
+        if ok then
+            local run = handle:wait()
+            if run.code == 0 then listed = run.stdout end
+        end
+    end
+    if listed then
+        for _, line in ipairs(vim.split(listed, "\n", { plain = true })) do
+            local stamp, rel = line:match("^([%d.]+)\t(.+)$")
+            if rel and not ignored(rel) then
+                found[#found + 1] = { rel = rel, mtime = tonumber(stamp) }
+            end
+        end
+    else
+        local uv = vim.uv or vim.loop
+        for _, rel in ipairs(note_rel_paths()) do
+            if not ignored(rel) then
+                local st = uv.fs_stat(utils.join_path(home, rel))
+                if st then found[#found + 1] = { rel = rel, mtime = st.mtime.sec } end
+            end
+        end
+    end
+    table.sort(found, function(a, b)
+        if a.mtime ~= b.mtime then return a.mtime > b.mtime end
+        return a.rel < b.rel
+    end)
+    if limit and #found > limit then
+        for i = #found, limit + 1, -1 do found[i] = nil end
+    end
+    return found
+end
+
+--- The notes touched most recently, previewed; `<enter>` opens one.
+function M.recent()
+    local o = config.options.recent or {}
+    local notes = M.recent_notes(o.limit or 50)
+    if #notes == 0 then
+        return vim.notify("[Fzfkasten] No notes under " .. config.options.home, vim.log.levels.INFO)
+    end
+    local today = os.date("%Y-%m-%d")
+    local entries, lookup = {}, {}
+    for _, n in ipairs(notes) do
+        local day = os.date("%Y-%m-%d", n.mtime)
+        local when = day == today and os.date("today %H:%M", n.mtime) or os.date("%m-%d %a", n.mtime)
+        local entry = ("%s:1: %-11s %s"):format(n.rel, when, n.rel)
+        entries[#entries + 1] = entry
+        lookup[entry] = n
+    end
+    fzf.fzf_exec(entries, vim.tbl_deep_extend("force", config.options.fzf, {
+        prompt = "Recent> ",
+        cwd = config.options.home,
+        previewer = "builtin",
+        fzf_opts = { ["--delimiter"] = ":", ["--with-nth"] = "3..", ["--no-sort"] = "" },
+        actions = {
+            ['default'] = function(selected)
+                local n = selected and lookup[selected[1]]
+                if n then buffer.edit(utils.join_path(config.options.home, n.rel)) end
+            end,
+        },
+    }))
+end
+
+-- What the panel offers. Each is a label and what pressing it does. The
+-- commands that take an argument -- which week? -- are here with their usual
+-- arguments already filled in, since that is what a key cannot hold and a
+-- picker can. The one-shot commands (today's note, a new note, capture) are
+-- not: they are a key each, and a menu in front of them is a keystroke more.
+local function panel_items()
+    local items = {}
+    local function add(label, fn) items[#items + 1] = { label = label, fn = fn } end
+    local week = function(spec, what)
+        return function() require('fzfkasten.week')[what](spec) end
+    end
+    add("Digest: this week", week("", "digest"))
+    add("Digest: last week", week("-1", "digest"))
+    add("Week notes: this week", week("", "pick"))
+    add("Week notes: last week", week("-1", "pick"))
+    if require('fzfkasten.calendar').enabled() then
+        local agenda = function(spec) return function() require('fzfkasten.calendar').pick(spec) end end
+        add("Agenda: this week", agenda(""))
+        add("Agenda: this week and next", agenda("0..1"))
+        add("Agenda: last week", agenda("-1"))
+    end
+    add("Recent notes", M.recent)
+    add("Notes by tag", M.search_by_tag)
+    add("Link tree of this note", function()
+        require('fzfkasten.graph').link_tree(vim.api.nvim_buf_get_name(0))
+    end)
+    add("Orphans: notes joined to nothing", function() require('fzfkasten.graph').orphans_picker() end)
+    add("Dead links", function() require('fzfkasten.graph').dead_links_picker() end)
+    add("Hubs", function() require('fzfkasten.graph').hubs_picker() end)
+    add("Notes… (open / backlinks / rename / delete)", M.note_panel)
+
+    local extra = (config.options.panel or {}).items
+    if type(extra) == "function" then extra = extra() end
+    for _, item in ipairs(extra or {}) do
+        if type(item) == "table" and item.label then
+            local fn = item.fn
+            if type(fn) == "string" then
+                local command = fn
+                fn = function() vim.cmd(command) end
+            end
+            if type(fn) == "function" then add(item.label, fn) end
+        end
+    end
+    return items
+end
+
+--- The panel: the commands worth a menu, and the notes behind them.
 function M.panel()
+    local items = panel_items()
+    local labels, by_label = {}, {}
+    for _, item in ipairs(items) do
+        labels[#labels + 1] = item.label
+        by_label[item.label] = item.fn
+    end
+    fzf.fzf_exec(labels, vim.tbl_deep_extend("force", config.options.fzf, {
+        prompt = "Fzfkasten> ",
+        previewer = false,
+        winopts = { preview = { hidden = "hidden" } },
+        fzf_opts = { ["--no-sort"] = "" },
+        actions = {
+            ['default'] = function(selected)
+                local fn = selected and by_label[selected[1]]
+                if fn then vim.schedule(fn) end
+            end,
+        },
+    }))
+end
+
+--- Pick a note, then what to do with it: open, backlinks, rename, delete.
+--- What `:FzfKastenPanel` was before it grew a command list; reached from it.
+function M.note_panel()
     fzf.files(vim.tbl_deep_extend("force", config.options.fzf.files, {
         cwd = config.options.home,
         prompt = "Panel: Select Note> ",
@@ -1051,25 +1209,25 @@ end
 --- An id already on the line is reused. Yanking twice is then the same link
 --- twice, not two ids for one line -- and two ids is the state where rewording
 --- the line breaks whichever of the links is not the one you follow.
-function M.yank_block_link()
+--- The link to the line under the cursor, minting its `^id` into the buffer
+--- when the line has none. nil and a reason when there is nothing to link to.
+--- @return string|nil link, string|nil why
+local function block_link_here()
     local name = get_note_name(vim.api.nvim_buf_get_name(0))
     if not name or name == "" then
-        vim.notify("[Fzfkasten] This buffer is not a note, so nothing can link to it.", vim.log.levels.WARN)
-        return
+        return nil, "This buffer is not a note, so nothing can link to it."
     end
 
     local lnum = vim.api.nvim_win_get_cursor(0)[1]
     local line = vim.api.nvim_buf_get_lines(0, lnum - 1, lnum, false)[1] or ""
     if vim.trim(line) == "" then
-        vim.notify("[Fzfkasten] Nothing on this line to link to.", vim.log.levels.WARN)
-        return
+        return nil, "Nothing on this line to link to."
     end
 
     local id = utils.block_id(line)
     if not id then
         if not vim.bo.modifiable or vim.bo.readonly then
-            vim.notify("[Fzfkasten] This buffer cannot be written to, so no id can be minted.", vim.log.levels.WARN)
-            return
+            return nil, "This buffer cannot be written to, so no id can be minted."
         end
         id = utils.new_block_id(utils.block_ids(vim.api.nvim_buf_get_lines(0, 0, -1, false)))
         vim.api.nvim_buf_set_lines(0, lnum - 1, lnum, false, { utils.with_block_id(line, id) })
@@ -1082,10 +1240,98 @@ function M.yank_block_link()
             target = target .. "|" .. alias
         end
     end
-    local link = "[[" .. target .. "]]"
+    return "[[" .. target .. "]]"
+end
 
+function M.yank_block_link()
+    local link, why = block_link_here()
+    if not link then
+        return vim.notify("[Fzfkasten] " .. why, vim.log.levels.WARN)
+    end
     set_yank_registers(link)
     vim.notify("[Fzfkasten] Yanked " .. link)
+end
+
+--- Where today's daily note is, whether or not it exists yet.
+local function daily_path(time)
+    local daily = config.options.notes.daily
+    local name = config.options.transform.new_file_name(os.date(daily.format, time or os.time()))
+    return utils.join_path(config.options.home, daily.dir, name .. "." .. config.options.extension)
+end
+
+--- Yank the link to this line, and write it into today's daily note as well.
+---
+--- The daily is where the day's thread is written, and a line in some other
+--- note is often what the thread is about: the task that came up, the point
+--- made in the minutes. Yanking, switching, pasting, switching back is four
+--- moves for one link; this is one. The link also lands in the registers, so
+--- pasting it somewhere else too costs nothing.
+---
+--- Where in the daily: after the cursor of the window it is open in, when it
+--- is on screen -- that is the line being written -- and at the end
+--- otherwise. A daily that is loaded is written through its buffer, so
+--- unsaved edits there are kept and its next `:w` carries the link; one that
+--- is not is appended to on disk, and created from its template first when
+--- today's does not exist yet.
+--- @param opts table|nil `{ bullet = string }` written in front of the link;
+---   defaults to `block_id.daily_bullet`, "- " unless configured
+function M.link_to_daily(opts)
+    opts = opts or {}
+    local link, why = block_link_here()
+    if not link then
+        return vim.notify("[Fzfkasten] " .. why, vim.log.levels.WARN)
+    end
+    set_yank_registers(link)
+
+    local bullet = opts.bullet or (config.options.block_id or {}).daily_bullet or "- "
+    local entry = bullet .. link
+    local path = daily_path()
+    local rel = path:sub(#config.options.home + 2)
+
+    -- The daily is this buffer: the link goes in after the cursor, the way a
+    -- paste would, since there is nowhere else it can mean.
+    local bufnr = vim.fn.bufnr(path)
+    if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
+        local at
+        for _, win in ipairs(vim.api.nvim_list_wins()) do
+            if vim.api.nvim_win_get_buf(win) == bufnr then
+                at = vim.api.nvim_win_get_cursor(win)[1]
+                vim.api.nvim_buf_set_lines(bufnr, at, at, false, { entry })
+                vim.api.nvim_win_set_cursor(win, { at + 1, 0 })
+                break
+            end
+        end
+        if not at then
+            at = vim.api.nvim_buf_line_count(bufnr)
+            vim.api.nvim_buf_set_lines(bufnr, at, at, false, { entry })
+        end
+        vim.notify(("[Fzfkasten] %s -> %s:%d"):format(link, rel, at + 1))
+        return
+    end
+
+    local lines
+    if vim.fn.filereadable(path) == 1 then
+        local ok, read = pcall(vim.fn.readfile, path)
+        if not ok then
+            return vim.notify("[Fzfkasten] Could not read " .. rel, vim.log.levels.ERROR)
+        end
+        lines = read
+    else
+        -- Today's daily is not written yet: make it the way `:FzfKastenDaily`
+        -- would, so the link is not the whole of it.
+        vim.fn.mkdir(vim.fn.fnamemodify(path, ":h"), "p")
+        local daily = config.options.notes.daily
+        local content = daily.template
+            and require('fzfkasten.core').load_template(daily.template, os.date(daily.format))
+            or ("# " .. os.date(daily.format))
+        lines = vim.split(content, "\n", { plain = true })
+    end
+    lines[#lines + 1] = entry
+    local ok, err = pcall(vim.fn.writefile, lines, path)
+    if not ok then
+        return vim.notify("[Fzfkasten] Could not write " .. rel .. ": " .. tostring(err), vim.log.levels.ERROR)
+    end
+    vim.notify(("[Fzfkasten] %s -> %s:%d"):format(link, rel, #lines))
 end
 
 function M.select_template(callback)
