@@ -123,7 +123,7 @@ Here is the default configuration. You can override any of these settings in the
     digest = {
       lines = 8,                  -- body lines quoted per note; 0 for headings only
       tasks = true,               -- tasks finished in the week, and still open in its notes
-      marks = { done = "✓", open = "○" },  -- task lines are references, not checkboxes
+      marks = { done = "✓", open = "☐" },  -- task lines are references, not checkboxes
       calendar = true,            -- the week's events first, when calendar.enabled
       ahead = 1,                  -- weeks to look forward at the end; 0 for none
       sources = {},               -- { label = "Mail", fn = function(range, ahead) ... }, see below
@@ -627,7 +627,7 @@ into the weekly note — or handed to the Claude pane with
 
 ## Still open in this week's notes (1)
 
-- ○ 図面を直す #todo  ([[2026-09-10#^m3x8bb]])
+- ☐ 図面を直す #todo  ([[2026-09-10#^m3x8bb]])
 ```
 
 Each note is a section: the day, a link to the note, and — when the note opens
@@ -645,7 +645,7 @@ Then the tasks, when `week.digest.tasks` is on: the ones finished in the week,
 by their `done:` stamp wherever they live, and the ones still open in the
 week's notes. Each links to its line (`[[active#^k7q2aa]]`) when the line
 carries an id, and to its note otherwise -- so a standing list's tasks do
-not all point at the same first line. They are listed with `✓` and `○`
+not all point at the same first line. They are listed with `✓` and `☐`
 (`week.digest.marks`), not as checkboxes: a digest line is a reference to a
 task living elsewhere, and pasted into the weekly note as `- [ ]` it would be
 scanned as a second copy, in the task list next to the real one. Both go through your `tasks` settings, so `require_tag` applies —

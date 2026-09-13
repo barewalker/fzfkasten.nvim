@@ -255,7 +255,7 @@ describe("week.digest_lines", function()
         assert.is_truthy(text:find("## 09-10 Thu  [[lathe]] -- Lathe", 1, true))
         assert.is_truthy(text:find("> Bought one.", 1, true))
         assert.is_truthy(text:find("## Finished this week (1)\n\n- ✓ ship it  ([[2026-09-08]])", 1, true))
-        assert.is_truthy(text:find("## Still open in this week's notes (1)\n\n- ○ follow up  ([[2026-09-08]])", 1, true))
+        assert.is_truthy(text:find("## Still open in this week's notes (1)\n\n- ☐ follow up  ([[2026-09-08]])", 1, true))
         assert.is_falsy(text:find("long ago", 1, true))
         assert.is_falsy(text:find("not this week", 1, true))
 
@@ -279,7 +279,7 @@ describe("week.digest_lines", function()
         local range = week.range("", on(2026, 9, 12))
         local lines = week.digest_lines(range, week.notes(range), { ahead = 1 })
         local text = table.concat(lines, "\n")
-        assert.is_truthy(text:find("## Due 2026-09-14 to 2026-09-20 (1)\n\n- ○ next week due:2026-09-16  ([[active]])", 1, true))
+        assert.is_truthy(text:find("## Due 2026-09-14 to 2026-09-20 (1)\n\n- ☐ next week due:2026-09-16  ([[active]])", 1, true))
         assert.is_falsy(text:find("later", 1, true))
         -- The week's own section comes first, the ahead one last.
         assert.is_true(text:find("## 09-08 Tue", 1, true) < text:find("## Due", 1, true))
@@ -339,7 +339,7 @@ describe("week.digest_lines", function()
             if t.rel == "weekly/2026-W37.md" then found = found + 1 end
         end
         assert.are.equal(0, found)
-        assert.is_truthy(table.concat(lines, "\n"):find("- ○ in the daily #todo  ([[2026-09-08]])", 1, true))
+        assert.is_truthy(table.concat(lines, "\n"):find("- ☐ in the daily #todo  ([[2026-09-08]])", 1, true))
     end)
 
     it("can leave the tasks out and quote nothing", function()
