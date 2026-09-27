@@ -159,7 +159,7 @@ end
 --- A fresh id, avoiding anything in `taken`.
 ---
 --- Random rather than built from the line's own words. A readable id
---- (`^budget-slice`) is a name, and a name classifies: sitting next to `#budget` it
+--- (`^budget-q3`) is a name, and a name classifies: next to `#budget` it
 --- would read as a second tag, which is the one thing an id is here not to be.
 --- It also has to be minted without asking anything, since the whole operation
 --- is meant to be one keystroke.

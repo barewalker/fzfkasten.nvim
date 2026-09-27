@@ -12,10 +12,10 @@ local home, dir, fixture, counter
 local TSV = table.concat({
     "id\tstart_date\tstart_time\tend_date\tend_time\ttitle\tlocation",
     "a1\t2026-09-03\t\t2026-09-08\t\tConference trip\t",
-    "b2\t2026-09-07\t12:50\t2026-09-07\t13:30\t会議 / 全体会議\t",
+    "b2\t2026-09-07\t12:50\t2026-09-07\t13:30\tAll hands\t",
     "c3\t2026-09-08\t13:00\t2026-09-08\t14:00\tDesign review\tRoom 3F",
     "d4\t2026-09-08\t\t2026-09-09\t\tOffsite workshop\t",
-    "e5\t2026-09-08\t09:00\t2026-09-08\t09:30\t朝会\t",
+    "e5\t2026-09-08\t09:00\t2026-09-08\t09:30\tStandup\t",
 }, "\n") .. "\n"
 
 local function write(path, text)
@@ -69,7 +69,7 @@ describe("calendar.parse_tsv", function()
     it("orders by day, all-day first, then time", function()
         local titles = {}
         for _, ev in ipairs(calendar.parse_tsv(TSV)) do titles[#titles + 1] = ev.title end
-        assert.are.same({ "Conference trip", "会議 / 全体会議", "Offsite workshop", "朝会", "Design review" }, titles)
+        assert.are.same({ "Conference trip", "All hands", "Offsite workshop", "Standup", "Design review" }, titles)
     end)
 
     it("refuses something that is not the TSV", function()
@@ -225,7 +225,7 @@ describe("calendar.rows", function()
         assert.are.equal(6, #entries)
         assert.are.equal("Conference trip", lookup[entries[1]].title)
         assert.is_true(lookup[entries[2]].rule)
-        assert.are.equal("会議 / 全体会議", lookup[entries[3]].title)
+        assert.are.equal("All hands", lookup[entries[3]].title)
     end)
 
     it("draws the rule last when everything is past", function()
@@ -236,8 +236,8 @@ describe("calendar.rows", function()
 
     it("keeps two identical events apart", function()
         local twice = calendar.parse_tsv("start_date\tstart_time\tend_date\tend_time\ttitle\n"
-            .. "2026-09-08\t09:00\t2026-09-08\t09:30\t朝会\n"
-            .. "2026-09-08\t09:00\t2026-09-08\t09:30\t朝会\n")
+            .. "2026-09-08\t09:00\t2026-09-08\t09:30\tStandup\n"
+            .. "2026-09-08\t09:00\t2026-09-08\t09:30\tStandup\n")
         local entries, lookup = calendar.rows(twice, "2026-09-08")
         assert.are.equal(3, #entries)
         assert.are_not.equal(entries[2], entries[3])
@@ -262,11 +262,11 @@ describe("the lines a note gets", function()
     it("lists a day, the spanning all-day event included, with its span", function()
         assert.are.same({
             "- all day (09-03..09-07)  Conference trip",
-            "- 12:50-13:30  会議 / 全体会議",
+            "- 12:50-13:30  All hands",
         }, calendar.day_lines(on(2026, 9, 7)))
         assert.are.same({
             "- all day  Offsite workshop",
-            "- 09:00-09:30  朝会",
+            "- 09:00-09:30  Standup",
             "- 13:00-14:00  Design review  @Room 3F",
         }, calendar.day_lines(on(2026, 9, 8)))
         assert.are.same({}, calendar.day_lines(on(2026, 9, 10)))
@@ -278,17 +278,17 @@ describe("the lines a note gets", function()
         assert.are.same({
             "09-07 Mon",
             "- all day (09-03..09-07)  Conference trip",
-            "- 12:50-13:30  会議 / 全体会議",
+            "- 12:50-13:30  All hands",
             "09-08 Tue",
             "- all day  Offsite workshop",
-            "- 09:00-09:30  朝会",
+            "- 09:00-09:30  Standup",
             "- 13:00-14:00  Design review  @Room 3F",
         }, lines)
     end)
 
     it("uses calendar.format and calendar.bullet when given", function()
         setup({ calendar = { bullet = "* ", format = function(ev) return ev.title end } })
-        assert.are.same({ "* Conference trip", "* 会議 / 全体会議" }, calendar.day_lines(on(2026, 9, 7)))
+        assert.are.same({ "* Conference trip", "* All hands" }, calendar.day_lines(on(2026, 9, 7)))
     end)
 
     it("says why when there is nothing to show", function()
@@ -308,7 +308,7 @@ describe("the lines a note gets", function()
         assert.are.equal(0, asked())
 
         local day = core.load_template("day.md", "t", on(2026, 9, 8))
-        assert.is_truthy(day:find("## Agenda\n- all day  Offsite workshop\n- 09:00-09:30  朝会\n", 1, true))
+        assert.is_truthy(day:find("## Agenda\n- all day  Offsite workshop\n- 09:00-09:30  Standup\n", 1, true))
 
         local week = core.load_template("week.md", "t", on(2026, 9, 10))
         assert.is_truthy(week:find("09-07 Mon\n- all day (09-03..09-07)", 1, true))

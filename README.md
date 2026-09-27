@@ -272,7 +272,7 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
 
 *   **`:FzfKastenSearchByTag`**: First presents a list of all unique tags in your Zettelkasten, then displays notes containing the selected tag.
 
-*   **`:FzfKastenFollowLink`**: Follow a `[[wikilink]]`. If the cursor is on a link, it opens that link directly; otherwise it lists every link in the buffer in an `fzf-lua` picker. Targets are resolved recursively across sub-directories (so links to notes in e.g. `lognote/` resolve too). When several notes share the name, you get a picker to choose; when none exist, the link is created from a template if `follow_link.create_nonexisting` is enabled (see below).
+*   **`:FzfKastenFollowLink`**: Follow a `[[wikilink]]`. If the cursor is on a link, it opens that link directly; otherwise it lists every link in the buffer in an `fzf-lua` picker. Targets are resolved recursively across sub-directories (so links to notes in e.g. `journal/` resolve too). When several notes share the name, you get a picker to choose; when none exist, the link is created from a template if `follow_link.create_nonexisting` is enabled (see below).
 
 *   **`:FzfKastenGotoLink`**: Like `:FzfKastenFollowLink` but cursor-only — follows the link under the cursor, and falls back to Vim's native `gf` when the cursor isn't on a link. Designed to be mapped to `gf` so the habit of pressing `gf` "just works":
 
@@ -289,7 +289,7 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
 
 *   **`:FzfKastenYankLink`**: Yank a link to the line the cursor is on. It mints a `^id` at the end of that line if it carries none, writes it into the buffer, and puts `[[note#^id]]` in the yank registers — so you copy the link from the note that holds the task, and paste it into the note that refers to it. An id already on the line is reused, so yanking twice writes the same link twice rather than a second id.
 
-    Following such a link (`:FzfKastenFollowLink`, or `gf`) puts the cursor on the line carrying that id, wherever it has moved to in the note and however it has been reworded since. This is for a task no heading identifies: a meeting note whose `## その他, 議論` holds three unrelated tasks cannot be pointed into with `[[note#その他, 議論]]`, because that anchor names all three.
+    Following such a link (`:FzfKastenFollowLink`, or `gf`) puts the cursor on the line carrying that id, wherever it has moved to in the note and however it has been reworded since. This is for a task no heading identifies: a meeting note whose `## Other business` holds three unrelated tasks cannot be pointed into with `[[note#Other business]]`, because that anchor names all three.
 
     Ids are kept apart from tags deliberately. `#budget` classifies — a search for it is meant to return every line about the budget. `^t3k9aa` identifies, and is worth nothing the moment a second line carries it.
 
@@ -318,7 +318,7 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
     one is set, any checkbox otherwise -- in the buffer, or in a range
     (`:'<,'>FzfKastenBlockIds`), as one change `u` puts back.
 
-    With `alias = true` the link reads `[[note#^t3k9aa|(A) 案を作る]]`. Tags are dropped from an alias either way — one carrying `#todo` would file the note it was pasted into under it too.
+    With `alias = true` the link reads `[[note#^t3k9aa|(A) draft the proposal]]`. Tags are dropped from an alias either way — one carrying `#todo` would file the note it was pasted into under it too.
 
 *   **`:FzfKastenLinkTree [depth]`**: What the note you are in is joined to, both directions at once, as a tree — its links, the notes linking to it, and theirs. See [The link graph](#the-link-graph).
 
@@ -358,7 +358,7 @@ require("fzfkasten").setup({
 
 A link normally points at a note, and an anchor narrows that to a heading. Neither
 is enough for a task written down in the middle of a meeting note: the heading
-above it (`## その他, 議論`) covers three unrelated tasks, so `[[note#その他, 議論]]`
+above it (`## Other business`) covers three unrelated tasks, so `[[note#Other business]]`
 names all three, which is to say none of them.
 
 `:FzfKastenYankLink`, on the line you want to point at:
@@ -615,19 +615,19 @@ into the weekly note — or handed to the Claude pane with
 
 ## 09-10 Thu  [[laptop]] -- choosing a new laptop
 
-- 候補
-- 決めたこと
+- Candidates
+- Decided
 
 > Bought one.
 
 ## Finished this week (2)
 
 - ✓ (A) check the budget figures #todo  ([[active#^k7q2aa]])
-- ✓ 見積を送る #todo  ([[2026-09-09]])
+- ✓ send the quote #todo  ([[2026-09-09]])
 
 ## Still open in this week's notes (1)
 
-- ☐ 図面を直す #todo  ([[2026-09-10#^m3x8bb]])
+- ☐ fix the diagrams #todo  ([[2026-09-10#^m3x8bb]])
 ```
 
 Each note is a section: the day, a link to the note, and — when the note opens
@@ -830,9 +830,9 @@ So `:FzfKastenTaskList` draws the same tasks into an ordinary scratch buffer, wh
 Tasks — 14   ·   priority
 
 (A) draft the monthly report  [due 2026-07-27]             tasks/active.md:32
-(A) ship the v2 release  [0/1]  [due 2026-07-31]      tasks/active.md:26
-  ↳ (A) draw it up and issue the drawing                   tasks/active.md:27
-(B) renew the domain  [due 2026-07-24]   tasks/active.md:25
+(A) ship the v2 release  [0/1]  [due 2026-07-31]           tasks/active.md:26
+  ↳ (A) tag and publish it                                 tasks/active.md:27
+(B) renew the domain  [due 2026-07-24]                     tasks/active.md:25
 ```
 
 | Key | Action |
@@ -872,10 +872,10 @@ Tasks — 14   ·   priority
 write a test that uploads a 2 GB file  ← what happens when an upload times…
 ────────────────────────────────────────────────────────────
   134  # Hardening the upload
-  136  - look over the sliding surfaces first, as soon as they arrive
+  136  - read the error logs first, as soon as they come in
   138  - what happens when an upload times out halfway
 ▶ 139    - [ ] write a test that uploads a 2 GB file #todo
-  140  - a way to apply any given load at a set position
+  140  - a way to resume an upload from where it stopped
 ```
 
 **It is an ordinary window, which is the whole design.** `p` goes into it and every Vim key works there — `j`, `gg`, `/`, `<c-d>`, `<c-w>p` — because nothing has been reimplemented. `<esc>` or `<c-q>` comes back to the list; deliberately not `q`, which closes the list, since one key meaning "leave this window" in one place and "close the whole thing" in another is a coin toss you make every time.
@@ -948,8 +948,8 @@ A job with steps is written the way you'd write it anyway — a checkbox indente
 
 ```markdown
 - [ ] (A) ship the v2 release #todo due:2026-07-31
-  - [x] draw it up and release the drawing
-  - [ ] send it out for machining
+  - [x] write the release notes
+  - [ ] tag and publish it
 ```
 
 **A checkbox nested under a task is a task too, and inherits `require_tag` from it.** Deciding an item is yours is a decision about the whole item; re-tagging every step of it is bookkeeping with nothing to show for it. Inheritance only ever flows down from a checkbox that carries the tag, so a meeting note's action items for other people — nested checkboxes just the same — stay out of the list exactly as before.
@@ -958,7 +958,7 @@ The list keeps a subtask under the item it belongs to, and says how far along th
 
 ```
 - [ ] (A) ship the v2 release  [1/2]  [due 2026-07-31]
-    ↳ send it out for machining
+    ↳ tag and publish it
 ```
 
 Subtasks sort with their parent rather than on their own priority — a `(A)` step of a `(C)` job stays where it can be read as a step, instead of being scattered to the top of the list on its own.
@@ -1355,8 +1355,8 @@ to name, so what it *shows* is **pasted** instead, under the buffer's name:
 ```
 fzfkasten://tasks:
 (A) draft the monthly report  [due 2026-07-27]  tasks/active.md:32
-(B) write up the calibration  [0/1]             tasks/active.md:26
-  ↳ read back the sensor logs                   lognote/2026-W30.md:14
+(B) write up the benchmarks  [0/1]              tasks/active.md:26
+  ↳ rerun the slow cases                        journal/2026-W30.md:14
 ```
 
 The note and line at the end of each row are virtual text — on the screen, not

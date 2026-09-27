@@ -186,18 +186,18 @@ COMMANDS
   already there is reused: yanking twice writes the same link twice, not a
   second id for one line.
   What it is for is a task that no heading identifies. A meeting note whose
-  "## その他, 議論" holds three unrelated tasks cannot be pointed into with
-  [[note#その他, 議論]] -- that anchor names all three, which is to say none of
+  "## Other business" holds three unrelated tasks cannot be pointed into
+  with [[note#Other business]] -- that anchor names all three, which is to say none of
   them.
-  Ids are kept apart from tags deliberately. #budget classifies, and a search for
-  it is meant to return every line about the budget; ^t3k9aa
+  Ids are kept apart from tags deliberately. #budget classifies, and a search
+  for it is meant to return every line about the budget; ^t3k9aa
   identifies, and is worth nothing the moment a second line carries it.
   The id survives the writers -- ticking a task off, cancelling it, setting a
   due date and tagging it all leave it at the end of the line -- and never
   reaches the task list, which shows what the task says and not its id.
   Configure with block_id (length, alphabet, alias, alias_max). block_id.alias,
   off by default, carries the line's own text into the link
-  ([[note#^t3k9aa|(A) 案を作る]]), cut to alias_max characters. Tags are dropped
+  ([[note#^t3k9aa|(A) draft the proposal]]), cut to alias_max characters. Tags are dropped
   from an alias either way: an alias carrying #todo would file the note it was
   pasted into under it too.
 - FzfKastenBlockIds: Mint a ^id on every task line without one -- a checkbox

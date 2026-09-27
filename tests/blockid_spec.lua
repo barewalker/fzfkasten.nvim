@@ -2,7 +2,7 @@
 -- at the note or at the heading above it.
 --
 -- The case it was built for is a task written down in a meeting note and then
--- referred to from a daily note days later. The heading over it (`# その他, 議論`)
+-- referred to from a daily note days later. The heading over it (`# Other business`)
 -- held three unrelated tasks, so an anchor naming the heading pointed at all
 -- three -- which is to say at none of them.
 --
@@ -56,11 +56,11 @@ describe("reading an id", function()
     after_each(cleanup)
 
     it("finds one at the end of a line", function()
-        assert.are.equal("t3k9aa", utils.block_id("- [ ] 案を作る #todo ^t3k9aa"))
+        assert.are.equal("t3k9aa", utils.block_id("- [ ] draft the proposal #todo ^t3k9aa"))
     end)
 
     it("finds one a stamp was appended after", function()
-        assert.are.equal("t3k9aa", utils.block_id("- [x] 案 ^t3k9aa done:2026-08-19 10:00"))
+        assert.are.equal("t3k9aa", utils.block_id("- [x] plan ^t3k9aa done:2026-08-19 10:00"))
     end)
 
     -- A note about anything numeric writes `x ^2`, and reading that as an id
@@ -74,7 +74,7 @@ describe("reading an id", function()
     end)
 
     it("returns nil for a line carrying none", function()
-        assert.is_nil(utils.block_id("- [ ] 案を作る #todo"))
+        assert.is_nil(utils.block_id("- [ ] draft the proposal #todo"))
     end)
 end)
 
@@ -83,18 +83,18 @@ describe("writing an id", function()
     after_each(cleanup)
 
     it("strips one along with the space in front of it", function()
-        assert.are.equal("- [ ] 案を作る #todo", utils.strip_block_id("- [ ] 案を作る #todo ^t3k9aa"))
+        assert.are.equal("- [ ] draft the proposal #todo", utils.strip_block_id("- [ ] draft the proposal #todo ^t3k9aa"))
     end)
 
     it("puts one at the end", function()
-        assert.are.equal("- [ ] 案を作る ^t3k9aa", utils.with_block_id("- [ ] 案を作る", "t3k9aa"))
+        assert.are.equal("- [ ] draft the proposal ^t3k9aa", utils.with_block_id("- [ ] draft the proposal", "t3k9aa"))
     end)
 
     -- Otherwise a line rewritten twice ends up with two ids, and rewording it
     -- then breaks whichever link is not the one being followed.
     it("replaces one already there rather than adding a second", function()
-        assert.are.equal("- [ ] 案を作る ^new111",
-            utils.with_block_id("- [ ] 案を作る ^t3k9aa", "new111"))
+        assert.are.equal("- [ ] draft the proposal ^new111",
+            utils.with_block_id("- [ ] draft the proposal ^t3k9aa", "new111"))
     end)
 
     it("collects the ids in a set of lines", function()
@@ -129,41 +129,41 @@ describe("the writers keep the id last", function()
     after_each(cleanup)
 
     it("ticking a task off leaves the id past the stamp", function()
-        local out = t.toggle_line("- [ ] 案を作る ^t3k9aa")
+        local out = t.toggle_line("- [ ] draft the proposal ^t3k9aa")
         assert.is_truthy(out:match("done:"), out)
         assert.is_truthy(out:match("%^t3k9aa$"), out)
     end)
 
     it("reopening it keeps the id and drops the stamp", function()
-        local reopened = t.toggle_line(t.toggle_line("- [ ] 案を作る ^t3k9aa"))
-        assert.are.equal("- [ ] 案を作る ^t3k9aa", reopened)
+        local reopened = t.toggle_line(t.toggle_line("- [ ] draft the proposal ^t3k9aa"))
+        assert.are.equal("- [ ] draft the proposal ^t3k9aa", reopened)
     end)
 
-    -- `~~案を作る ^t3k9aa~~` would read as though the id were part of what was
+    -- `~~draft the proposal ^t3k9aa~~` would read as though the id were part of what was
     -- dropped, and the strikethrough is decoration the id is not inside.
     it("cancelling wraps the text but not the id", function()
-        local out = t.cancel_line("- [ ] 案を作る ^t3k9aa")
-        assert.is_truthy(out:match("~~案を作る~~"), out)
+        local out = t.cancel_line("- [ ] draft the proposal ^t3k9aa")
+        assert.is_truthy(out:match("~~draft the proposal~~"), out)
         assert.is_truthy(out:match("%^t3k9aa$"), out)
     end)
 
     it("a due date goes before the id", function()
-        assert.are.equal("- [ ] 案を作る due:2026-08-20 ^t3k9aa",
-            t.due_line("- [ ] 案を作る ^t3k9aa", "2026-08-20"))
+        assert.are.equal("- [ ] draft the proposal due:2026-08-20 ^t3k9aa",
+            t.due_line("- [ ] draft the proposal ^t3k9aa", "2026-08-20"))
     end)
 
     it("clearing the due date leaves the id where it was", function()
-        assert.are.equal("- [ ] 案を作る ^t3k9aa",
-            t.due_line("- [ ] 案を作る due:2026-08-20 ^t3k9aa", ""))
+        assert.are.equal("- [ ] draft the proposal ^t3k9aa",
+            t.due_line("- [ ] draft the proposal due:2026-08-20 ^t3k9aa", ""))
     end)
 
     it("a tag goes before the id", function()
-        assert.are.equal("- [ ] 案を作る #todo ^t3k9aa",
-            t.tag_line("- [ ] 案を作る ^t3k9aa", "todo"))
+        assert.are.equal("- [ ] draft the proposal #todo ^t3k9aa",
+            t.tag_line("- [ ] draft the proposal ^t3k9aa", "todo"))
     end)
 
     it("hands a refusal back untouched", function()
-        local out, why = t.toggle_line("- [-] 案を作る ^t3k9aa")
+        local out, why = t.toggle_line("- [-] draft the proposal ^t3k9aa")
         assert.is_nil(out)
         assert.are.equal("cancelled", why)
     end)
@@ -174,13 +174,13 @@ describe("the id never reaches the reader", function()
     after_each(cleanup)
 
     it("is not part of what a task says", function()
-        local text = t.parse_task_text("(A) 案を作る #todo ^t3k9aa", config.options.tasks)
-        assert.are.equal("案を作る #todo", text)
+        local text = t.parse_task_text("(A) draft the proposal #todo ^t3k9aa", config.options.tasks)
+        assert.are.equal("draft the proposal #todo", text)
     end)
 
     it("comes off a cancelled task too, strike and all", function()
-        local text = t.parse_task_text("~~案を作る~~ cancelled:2026-08-19 ^t3k9aa", config.options.tasks)
-        assert.are.equal("案を作る", text)
+        local text = t.parse_task_text("~~draft the proposal~~ cancelled:2026-08-19 ^t3k9aa", config.options.tasks)
+        assert.are.equal("draft the proposal", text)
     end)
 end)
 
@@ -190,8 +190,8 @@ describe("yank_block_link", function()
 
     it("mints an id on the line and leaves a link to it in the registers", function()
         local path = note("2026-08-17 planning meeting.md", {
-            "# その他, 議論",
-            "- [ ] 案を作る #todo",
+            "# Other business",
+            "- [ ] draft the proposal #todo",
         })
         open(path, 2)
         pickers.yank_block_link()
@@ -203,31 +203,31 @@ describe("yank_block_link", function()
     end)
 
     it("leaves the rest of the line alone", function()
-        local path = note("会議.md", { "- [ ] 案を作る #todo" })
+        local path = note("meeting.md", { "- [ ] draft the proposal #todo" })
         open(path, 1)
         pickers.yank_block_link()
-        assert.is_truthy(line_at(1):match("^%- %[ %] 案を作る #todo %^%w+$"), line_at(1))
+        assert.is_truthy(line_at(1):match("^%- %[ %] draft the proposal #todo %^%w+$"), line_at(1))
     end)
 
     -- Twice is the same link twice, not a second id: two ids on one line is the
     -- state where rewording it breaks one of the two links pointing at it.
     it("reuses an id already on the line", function()
-        local path = note("会議.md", { "- [ ] 案を作る ^t3k9aa" })
+        local path = note("meeting.md", { "- [ ] draft the proposal ^t3k9aa" })
         open(path, 1)
         pickers.yank_block_link()
-        assert.are.equal("- [ ] 案を作る ^t3k9aa", line_at(1))
-        assert.are.equal("[[会議#^t3k9aa]]", vim.fn.getreg('"'))
+        assert.are.equal("- [ ] draft the proposal ^t3k9aa", line_at(1))
+        assert.are.equal("[[meeting#^t3k9aa]]", vim.fn.getreg('"'))
     end)
 
     it("writes no alias by default", function()
-        local path = note("会議.md", { "- [ ] 案を作る #todo" })
+        local path = note("meeting.md", { "- [ ] draft the proposal #todo" })
         open(path, 1)
         pickers.yank_block_link()
         assert.is_nil(vim.fn.getreg('"'):find("|", 1, true))
     end)
 
     it("does nothing on a blank line", function()
-        local path = note("会議.md", { "- [ ] 案を作る", "" })
+        local path = note("meeting.md", { "- [ ] draft the proposal", "" })
         open(path, 2)
         vim.fn.setreg('"', "untouched")
         pickers.yank_block_link()
@@ -237,7 +237,7 @@ describe("yank_block_link", function()
 
     it("does nothing in a buffer that is not a note", function()
         vim.cmd("enew")
-        vim.api.nvim_buf_set_lines(0, 0, -1, false, { "- [ ] 案を作る" })
+        vim.api.nvim_buf_set_lines(0, 0, -1, false, { "- [ ] draft the proposal" })
         vim.fn.setreg('"', "untouched")
         pickers.yank_block_link()
         assert.are.equal("untouched", vim.fn.getreg('"'))
@@ -252,17 +252,17 @@ describe("yank_block_link with block_id.alias on", function()
     -- file the daily note it was pasted into under both.
     it("carries the line's prose but not its tags", function()
         setup({ block_id = { alias = true, alias_max = nil } })
-        local path = note("会議.md", { "- [ ] (A) 案を作る #todo #budget" })
+        local path = note("meeting.md", { "- [ ] (A) draft the proposal #todo #budget" })
         open(path, 1)
         pickers.yank_block_link()
         local id = utils.block_id(line_at(1))
-        assert.are.equal("[[会議#^" .. id .. "|(A) 案を作る]]", vim.fn.getreg('"'))
+        assert.are.equal("[[meeting#^" .. id .. "|(A) draft the proposal]]", vim.fn.getreg('"'))
     end)
 
     -- Counted in characters: cut by byte, a Japanese alias ends mid-glyph.
     it("cuts a long line to alias_max characters", function()
         setup({ block_id = { alias = true, alias_max = 4 } })
-        local path = note("会議.md", { "- [ ] 日本語の長い行を途中で切る" })
+        local path = note("meeting.md", { "- [ ] 日本語の長い行を途中で切る" })
         open(path, 1)
         pickers.yank_block_link()
         local alias = vim.fn.getreg('"'):match("|(.*)%]%]$")
@@ -271,7 +271,7 @@ describe("yank_block_link with block_id.alias on", function()
 
     it("writes no alias when the line is nothing but tags", function()
         setup({ block_id = { alias = true } })
-        local path = note("会議.md", { "- [ ] #todo" })
+        local path = note("meeting.md", { "- [ ] #todo" })
         open(path, 1)
         pickers.yank_block_link()
         assert.is_nil(vim.fn.getreg('"'):find("|", 1, true))
@@ -298,43 +298,43 @@ describe("following a link to a line", function()
     -- The point of the whole thing: three tasks under one heading, and the link
     -- lands on the one it names rather than on the heading over all three.
     it("puts the cursor on the line the id names", function()
-        note("会議.md", {
-            "# その他, 議論",
+        note("meeting.md", {
+            "# Other business",
             "- [ ] send the parts list ^aaa111",
             "- [ ] decide how to ship it ^bbb222",
-            "- [ ] 案を作る ^ccc333",
+            "- [ ] draft the proposal ^ccc333",
         })
-        local daily = note("2026-08-19.md", { "[[会議#^bbb222]] の件" })
+        local daily = note("2026-08-19.md", { "[[meeting#^bbb222]] follow-up" })
         open(daily, 1)
         follow(1)
-        assert.are.equal("会議.md", vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":t"))
+        assert.are.equal("meeting.md", vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":t"))
         assert.are.equal("- [ ] decide how to ship it ^bbb222", cursor_line())
     end)
 
     it("still finds the line after a stamp was appended past the id", function()
-        note("会議.md", { "# 議論", "- [x] 案を作る ^ccc333 done:2026-08-19 10:00" })
-        local daily = note("2026-08-19.md", { "[[会議#^ccc333]] の件" })
+        note("meeting.md", { "# Discussion", "- [x] draft the proposal ^ccc333 done:2026-08-19 10:00" })
+        local daily = note("2026-08-19.md", { "[[meeting#^ccc333]] follow-up" })
         open(daily, 1)
         follow(1)
-        assert.are.equal("- [x] 案を作る ^ccc333 done:2026-08-19 10:00", cursor_line())
+        assert.are.equal("- [x] draft the proposal ^ccc333 done:2026-08-19 10:00", cursor_line())
     end)
 
     it("carries the id through an alias", function()
-        note("会議.md", { "# 議論", "- [ ] 案を作る ^ccc333" })
-        local daily = note("2026-08-19.md", { "[[会議#^ccc333|案を作る]] の件" })
+        note("meeting.md", { "# Discussion", "- [ ] draft the proposal ^ccc333" })
+        local daily = note("2026-08-19.md", { "[[meeting#^ccc333|draft the proposal]] follow-up" })
         open(daily, 1)
         follow(1)
-        assert.are.equal("- [ ] 案を作る ^ccc333", cursor_line())
+        assert.are.equal("- [ ] draft the proposal ^ccc333", cursor_line())
     end)
 
     -- The note still opens: a link whose line was deleted is worth more open at
     -- the top than refused outright, and the warning says which id went missing.
     it("opens the note at the top when no line carries the id", function()
-        note("会議.md", { "# 議論", "- [ ] 案を作る" })
-        local daily = note("2026-08-19.md", { "[[会議#^ccc333]] の件" })
+        note("meeting.md", { "# Discussion", "- [ ] draft the proposal" })
+        local daily = note("2026-08-19.md", { "[[meeting#^ccc333]] follow-up" })
         open(daily, 1)
         follow(1)
-        assert.are.equal("会議.md", vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":t"))
+        assert.are.equal("meeting.md", vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":t"))
         assert.are.equal(1, vim.api.nvim_win_get_cursor(0)[1])
     end)
 end)
