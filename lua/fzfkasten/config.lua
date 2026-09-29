@@ -117,7 +117,9 @@ M.defaults = {
   },
   weekly = {
    dir = "weekly",
-   format = "%Y-W%V",
+   -- %G, not %Y: the year the ISO week belongs to. With %Y the week of
+   -- 2025-12-29 is 2025-W01 on Monday and 2026-W01 on Thursday.
+   format = "%G-W%V",
    template = "weekly.md",
    fzf_opts = {},
    -- How many weeks back the log picker (FzfKastenLog) lists, alongside

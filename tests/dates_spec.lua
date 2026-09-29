@@ -132,3 +132,30 @@ describe("days_from: across a daylight-saving change", function()
         assert.are.equal("2026-03-09", tasks._test.resolve_due("+2d", eve))
     end)
 end)
+
+-- The ISO week and the calendar year part ways for a few days around New Year:
+-- 2025-12-29..31 are in 2026-W01, and 2027-01-01 is in 2026-W53. A weekly note
+-- named with %Y got one week two names depending on the day it was opened.
+describe("the weekly note's year", function()
+    local core = require("fzfkasten.core")
+    local home
+
+    before_each(function()
+        home = vim.fn.tempname()
+        vim.fn.mkdir(home .. "/templates", "p")
+        vim.fn.writefile({ "{{isoyear}}-W{{week}} {{year}}" }, home .. "/templates/w.md")
+        config.setup({ home = home })
+    end)
+
+    it("names the week by the year it belongs to", function()
+        local fmt = config.options.notes.weekly.format
+        assert.are.equal("2026-W01", os.date(fmt, on(2025, 12, 29)))
+        assert.are.equal("2026-W01", os.date(fmt, on(2026, 1, 1)))
+        assert.are.equal("2026-W53", os.date(fmt, on(2027, 1, 1)))
+    end)
+
+    it("gives {{isoyear}} to a template, beside the calendar's {{year}}", function()
+        assert.are.equal("2026-W01 2025", core.load_template("w.md", "t", on(2025, 12, 29)))
+        assert.are.equal("2026-W53 2027", core.load_template("w.md", "t", on(2027, 1, 1)))
+    end)
+end)

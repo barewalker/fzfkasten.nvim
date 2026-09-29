@@ -35,7 +35,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **Claude Code Integration**: Optional. Sends notes and named prompts to the Claude Code running in a herdr or tmux pane — on this machine or over ssh — by typing into it. Disabled by default; see [Claude Code Integration](#claude-code-integration).
 - [x] **Link Aliasing**: `[[note|alias]]` syntax is supported across follow link, backlinks, and rename. Anchors too — `[[note#heading]]` for a section and `[[note#^id]]` for a single line — and all three read them alike.
 - [x] **Filename Sanitization**: Unicode-safe default (preserves CJK) with a user-overridable `transform.sanitize_filename` hook.
-- [x] **Template Placeholders**: Built-in `{{title}} {{date}} {{hdate}} {{year}} {{month}} {{day}} {{week}} {{time}}` plus user-defined entries via `template_placeholders` (string or function values).
+- [x] **Template Placeholders**: Built-in `{{title}} {{date}} {{hdate}} {{year}} {{month}} {{day}} {{week}} {{isoyear}} {{time}}` plus user-defined entries via `template_placeholders` (string or function values).
 - [x] **Image Preview**: Delegated to `fzf-lua`'s previewer; see the [Image Preview](#image-preview) section for configuration.
 - [x] **Tasks**: Collect `- [ ]` checkboxes across every note, jump to the one you pick, and tick it off without leaving the picker. Mark which checkboxes are yours with a tag, and triage the rest from an inbox. No index, no task file — see [Tasks](#tasks).
 
@@ -83,7 +83,7 @@ Here is the default configuration. You can override any of these settings in the
     },
     weekly = {
       dir = "weekly",
-      format = "%Y-W%V",
+      format = "%G-W%V",
       template = "templates/weekly.md",
     },
   },

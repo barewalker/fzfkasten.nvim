@@ -68,6 +68,10 @@ function M.load_template(rel_path, title, time)
         month = os.date("%m", time),
         day = os.date("%d", time),
         week = os.date("%V", time),
+        -- The year {{week}} counts in, not the calendar's: Dec 29-31 can be
+        -- in week 01 of the next year. `{{isoyear}}-W{{week}}` is the name the
+        -- weekly note gets; `{{year}}-W{{week}}` would call it a year early.
+        isoyear = os.date("%G", time),
         time = os.date("%H:%M", time),
         -- Functions, so the calendar is only asked when the template names
         -- it: a call costs a network round trip (or a cache hit), and most
