@@ -970,7 +970,16 @@ end
 -- template. Mirrors telekasten's follow_creates_nonexisting behaviour.
 local function create_note_for_link(name)
     local fl = config.options.follow_link or {}
-    local full_path = utils.join_path(config.options.home, name .. "." .. config.options.extension)
+    -- The same cleaning a new note's title gets: `[[a:b]]` must not make a
+    -- file named `a:b.md`, which Windows cannot hold and a synced copy of the
+    -- collection would choke on. The title the template sees keeps the name
+    -- as the link wrote it.
+    local file_name = config.options.transform.sanitize_filename(name)
+    if file_name == "" then
+        vim.notify("[Fzfkasten] No usable file name in link: " .. name, vim.log.levels.WARN)
+        return
+    end
+    local full_path = utils.join_path(config.options.home, file_name .. "." .. config.options.extension)
     buffer.edit(full_path)
 
     local core = require('fzfkasten.core')

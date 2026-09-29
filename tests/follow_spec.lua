@@ -238,3 +238,20 @@ describe("follow_link: anchors", function()
         assert.are.equal(0, vim.fn.filereadable(home .. "/#見出し.md"))
     end)
 end)
+
+describe("follow_link: creating the target", function()
+    after_each(cleanup)
+
+    before_each(function()
+        setup({ follow_link = { create_nonexisting = true } })
+    end)
+
+    -- The file name gets the cleaning a new note's title does; `a:b.md` is a
+    -- file Windows cannot hold.
+    it("cleans the file name the link would make", function()
+        note("from.md", { "see [[a:b]]" })
+        vim.cmd("edit " .. home .. "/from.md")
+        follow(1)
+        assert.are.equal("ab.md", opened())
+    end)
+end)
