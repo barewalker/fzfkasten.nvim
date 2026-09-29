@@ -174,6 +174,13 @@ describe("writers: refusing a line that isn't there", function()
         assert.are.same(before, read("n.md"))
     end)
 
+    it("tag_at puts the tag ahead of the line's ^id, as TaskTag does", function()
+        setup()
+        note("n.md", { "- [ ] alpha ^t3k9aa" })
+        assert.is_true(tasks.tag_at(path("n.md"), 1))
+        assert.are.same({ "- [ ] alpha #todo ^t3k9aa" }, read("n.md"))
+    end)
+
     it("tag_at refuses when require_tag is not set", function()
         setup({ tasks = { require_tag = false } })
         note("n.md", { "- [ ] alpha" })

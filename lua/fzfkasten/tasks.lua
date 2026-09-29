@@ -305,9 +305,11 @@ local function is_always(rel)
     return false
 end
 
--- Does `text` carry `#<tag>`? The frontier stops `#todo` matching `#todos`.
+-- Does `text` carry `#<tag>`? The frontier stops `#todo` matching `#todos`,
+-- and `#todo-x` / `#todo_list`: `-` and `_` belong to a tag (`patterns.tag`
+-- reads them), so those are other tags that merely start with `todo`.
 local function has_tag(text, tag)
-    return text:find("#" .. vim.pesc(tag) .. "%f[%W]") ~= nil
+    return text:find("#" .. vim.pesc(tag) .. "%f[^%w_-]") ~= nil
 end
 
 -- Strip the strikethrough a cancelled task wears, or return the text as it
@@ -455,7 +457,9 @@ local function cancel_line_bare(line)
     if not cb then
         return nil, "no checkbox"
     end
-    if cb.mark == o.marks.done then
+    -- `[X]` is done too: the scan reads it so, and cancelling it would put a
+    -- stamp and a strike on work that happened.
+    if cb.mark:lower() == o.marks.done:lower() then
         return nil, "done"
     end
 
@@ -890,7 +894,18 @@ function M.collect(opts)
                                         table.insert(tasks, task)
                                     end
                                 end
+                            elseif line:match("^%S") then
+                                -- A paragraph at the margin ends the list.
+                                -- Without this a checkbox indented under it
+                                -- hung off the last item above, and took its
+                                -- tag. Blank lines and indented prose do not:
+                                -- they sit inside a loose list item.
+                                stack = {}
                             end
+                        elseif lines[lineno]:match("^%S") then
+                            -- A heading (never scannable) ends it the same
+                            -- way, and so does a fence at the margin.
+                            stack = {}
                         end
                     end
                 end
@@ -1080,7 +1095,9 @@ function M.tag_at(path, lineno)
         return false -- already a task; nothing to do
     end
 
-    lines[lineno] = line:gsub("%s*$", "") .. " #" .. tag
+    -- Through tag_line, so the tag goes in ahead of a `^id` the way
+    -- `:FzfKastenTaskTag` puts it, rather than after it.
+    lines[lineno] = tag_line(line, tag)
     vim.fn.writefile(lines, path)
     remember(path, lineno, line, lines[lineno])
     if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then

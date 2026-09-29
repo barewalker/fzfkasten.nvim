@@ -101,6 +101,12 @@ describe("cancel_line", function()
         assert.are.equal("done", why)
     end)
 
+    it("refuses an uppercase [X] too, which the scan reads as done", function()
+        local out, why = t.cancel_line("- [X] foo")
+        assert.is_nil(out)
+        assert.are.equal("done", why)
+    end)
+
     it("is nil on a line with no checkbox", function()
         local out, why = t.cancel_line("just prose")
         assert.is_nil(out)
@@ -302,6 +308,15 @@ describe("has_tag", function()
         assert.is_true(t.has_tag("do the thing #todo", "todo"))
         assert.is_false(t.has_tag("do the thing #todos", "todo"))
         assert.is_false(t.has_tag("no tag at all", "todo"))
+    end)
+
+    -- `patterns.tag` reads `-` and `_` as part of a tag, so these are other
+    -- tags, and counting them as #todo put them in the task list.
+    it("does not take a tag that goes on with - or _", function()
+        assert.is_false(t.has_tag("x #todo-later", "todo"))
+        assert.is_false(t.has_tag("x #todo_list", "todo"))
+        assert.is_true(t.has_tag("x #todo, then", "todo"))
+        assert.is_true(t.has_tag("x #todo ^t3k9aa", "todo"))
     end)
 end)
 
@@ -513,6 +528,24 @@ describe("collect: nested tasks", function()
             "  - [ ] their step",
         })
         assert.are.equal(0, #tasks.collect())
+        assert.are.equal(2, #tasks.collect({ inbox = true }))
+    end)
+
+    it("ends the list at a heading or a paragraph at the margin", function()
+        note("n.md", {
+            "- [ ] parent #todo",
+            "",
+            "  - [ ] still the parent's, past a blank line",
+            "## Someone else's section",
+            "  - [ ] not a subtask of the item above",
+            "- [ ] parent #todo",
+            "Prose at the margin.",
+            "  - [ ] nor this",
+        })
+        local out = tasks.collect()
+        assert.are.equal(3, #out)
+        assert.are.equal("still the parent's, past a blank line", out[2].text)
+        assert.are.equal(out[1], out[2].parent)
         assert.are.equal(2, #tasks.collect({ inbox = true }))
     end)
 
