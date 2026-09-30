@@ -204,7 +204,9 @@ function M.fetch(from, to, opts)
     -- Keyed by the range as well as the command: a `cmd` of your own that
     -- reads the range from somewhere other than its arguments must not be
     -- answered for one week with another's list.
-    local key = from .. "\0" .. to .. "\0" .. table.concat(argv, "\0")
+    -- Joined with the unit separator, not NUL: on older Neovims a Lua string
+    -- holding a NUL reaches vim.fn as a Blob, and sha256() refuses it (E976).
+    local key = table.concat({ from, to, table.concat(argv, "\31") }, "\31")
     local ttl = tonumber((o.cache or {}).ttl) or 900
     local now = os.time()
 
