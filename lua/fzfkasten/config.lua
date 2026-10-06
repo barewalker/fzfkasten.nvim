@@ -406,6 +406,10 @@ M.defaults = {
     sort = "s",      -- cycle priority -> due -> added
     reverse = "S",   -- flip the order
     inbox = "i",     -- switch between the task list and the inbox
+    filter_tag = "T", -- show only the tasks filed under one tag
+    filter_due = "D", -- cycle overdue -> due by today -> this week -> no due -> all
+    closed = "X",    -- cycle open -> also done/cancelled -> only those
+    group = "=",     -- cycle grouping by note -> tag -> due -> none
     refresh = "r",   -- re-scan the notes
     close = "q",
     -- The preview. All three of Vim's scroll pairs are pointed at the split

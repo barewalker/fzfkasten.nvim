@@ -142,6 +142,14 @@ COMMANDS
   <alt-s> cycles the ordering (priority -> due -> added -> priority) and
   <alt-r> reverses it; the active ordering shows in the prompt. A task with no
   due date sorts last under `due`, not first.
+  <alt-t> narrows to one tag, chosen from those the tasks in view carry (a
+  step of a tagged job counts). <alt-e> cycles a due filter: overdue -> due
+  by today -> due this week -> no due date -> off. <alt-x> shows done and
+  cancelled tasks too (marked with a check or a cross), then only them.
+  <alt-g> groups by note, tag (a task under each of its tags) or due date
+  (overdue / today / within a week / later / none); the group name leads each
+  row. A step without a due date takes its job's. All of these show in the
+  prompt.
   A checkbox indented under a task is a subtask of it and inherits
   tasks.require_tag, so the steps of one job need tagging once, not each. The
   list keeps a subtask under its parent and shows the parent's progress
@@ -150,7 +158,9 @@ COMMANDS
 - FzfKastenTaskList: The same tasks as an ordinary buffer, worked with Vim
   keys -- j/k/gg/G// are Vim's, and the actions are unmodified letters:
   <enter> open, x done, c cancel, t tag, a add, u undo, s/S sort/reverse,
-  i inbox, r rescan, q close. Nothing is mapped that Vim needs. The buffer is
+  T tag filter, D due filter, X show closed, = group, i inbox, r rescan,
+  q close. The filters and grouping are the picker's, shown in the heading;
+  a group is a heading over its rows. Nothing is mapped that Vim needs. The buffer is
   never written; actions rewrite the notes and it redraws from disk.
   A split below previews the task's note around its line, following the
   cursor. All three of Vim's scroll pairs act on it from the list --
@@ -168,7 +178,8 @@ COMMANDS
   preview = { enabled, height }, keys).
   Rows are coloured through highlight groups of their own -- FzfkastenTag
   (every tag, by patterns.tag), FzfkastenPriority, FzfkastenDue,
-  FzfkastenMeta -- linked to Special / Statement / Constant / Comment by
+  FzfkastenOverdue, FzfkastenMeta, FzfkastenClosed, FzfkastenGroup -- linked
+  to Special / Statement / Constant / Error / Comment / Comment / Title by
   default and restyled with |nvim_set_hl()|.
 - FzfKastenTaskListInbox: The same buffer, showing the inbox.
 - FzfKastenTaskToggle: Toggle the checkbox on the current line.

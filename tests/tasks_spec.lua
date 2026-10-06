@@ -856,3 +856,158 @@ describe("ids minted with the tag", function()
         assert.are.equal("- [ ] c", line(3))
     end)
 end)
+
+-- The view filters and the grouping. Due dates are written relative to today,
+-- since "overdue" is a statement about today.
+describe("collect: view filters and grouping", function()
+    local home
+    local utils = require("fzfkasten.utils")
+
+    local function day(offset)
+        return os.date("%Y-%m-%d", utils.days_from(nil, offset))
+    end
+
+    local function note(name, lines)
+        vim.fn.writefile(lines, home .. "/" .. name)
+    end
+
+    local function texts(list)
+        return vim.tbl_map(function(task) return task.text:gsub(" ?due:%S+", "") end, list)
+    end
+
+    before_each(function()
+        home = vim.fn.tempname()
+        vim.fn.mkdir(home, "p")
+        setup({ home = home, tasks = { require_tag = "todo" } })
+        note("a.md", {
+            "- [ ] late #todo #budget due:" .. day(-2),
+            "- [ ] now #todo due:" .. day(0),
+            "- [ ] soon #todo due:" .. day(3),
+            "- [ ] far #todo due:" .. day(30),
+            "- [ ] whenever #todo",
+            "- [x] finished #todo #budget",
+            "- [-] dropped #todo",
+        })
+        note("b.md", {
+            "- [ ] job #todo #vendor due:" .. day(-1),
+            "  - [ ] step",
+        })
+    end)
+
+    after_each(function()
+        vim.fn.delete(home, "rf")
+    end)
+
+    it("leaves closed tasks out unless asked, and shows only them on request", function()
+        assert.are.equal(7, #tasks.collect())
+        assert.are.equal(9, #tasks.collect({ state = "all" }))
+        assert.are.same({ "dropped #todo", "finished #todo #budget" },
+            (function()
+                local out = texts(tasks.collect({ state = "closed" }))
+                table.sort(out)
+                return out
+            end)())
+    end)
+
+    it("keeps a tag's tasks, the steps of a tagged job included", function()
+        assert.are.same({ "job #todo #vendor", "step" },
+            texts(tasks.collect({ tag = "vendor" })))
+        assert.are.same({ "late #todo #budget" }, texts(tasks.collect({ tag = "#budget" })))
+    end)
+
+    it("keeps everything when the tag is require_tag", function()
+        assert.are.equal(7, #tasks.collect({ tag = "todo" }))
+    end)
+
+    it("widens the due filter from overdue to a week, with steps taking the job's date", function()
+        local function due(f)
+            local out = texts(tasks.collect({ due = f }))
+            table.sort(out)
+            return out
+        end
+        assert.are.same({ "job #todo #vendor", "late #todo #budget", "step" }, due("overdue"))
+        assert.are.same({ "job #todo #vendor", "late #todo #budget", "now #todo", "step" }, due("today"))
+        assert.are.same({ "job #todo #vendor", "late #todo #budget", "now #todo", "soon #todo", "step" },
+            due("week"))
+        assert.are.same({ "whenever #todo" }, due("none"))
+    end)
+
+    it("cycles each toggle and wraps back to off", function()
+        assert.are.equal("overdue", tasks.next_due_filter(nil))
+        assert.is_nil(tasks.next_due_filter("none"))
+        assert.are.equal("all", tasks.next_state(nil))
+        assert.are.equal("open", tasks.next_state("closed"))
+        assert.are.equal("note", tasks.next_group(nil))
+        assert.is_nil(tasks.next_group("due"))
+    end)
+
+    it("groups by due in calendar order, whatever the sort", function()
+        local groups = tasks.group(tasks.collect({ sort = "added" }), "due")
+        assert.are.same({ "Overdue", "Today", "Within a week", "Later", "No due date" },
+            vim.tbl_map(function(g) return g.label end, groups))
+        assert.are.same({ "late #todo #budget", "job #todo #vendor", "step" }, texts(groups[1].tasks))
+    end)
+
+    it("groups by tag with a task in each of its tags, and the untagged last", function()
+        note("c.md", { "- [ ] both #todo #budget #vendor" })
+        local groups = tasks.group(tasks.collect({ sort = "added" }), "tag")
+        local labels = vim.tbl_map(function(g) return g.label end, groups)
+        assert.are.equal("(no tag)", labels[#labels])
+        local count = 0
+        for _, g in ipairs(groups) do
+            for _, task in ipairs(g.tasks) do
+                if task.text:find("both") then count = count + 1 end
+            end
+        end
+        assert.are.equal(2, count)
+    end)
+
+    it("groups by note, and nests a step only under a parent in the same group", function()
+        local groups = tasks.group(tasks.collect(), "note")
+        local b
+        for _, g in ipairs(groups) do
+            if g.label == "b.md" then b = g end
+        end
+        assert.are.equal(2, #b.tasks)
+        assert.is_false(b.orphaned[b.tasks[2]])
+        -- Divided by due date, the step stays with the job it takes its date from.
+        local due = tasks.group(tasks.collect(), "due")
+        assert.is_false(due[1].orphaned[b.tasks[2]] or false)
+    end)
+
+    it("lists the tags in view, without require_tag", function()
+        local tags = tasks.tags_in(tasks.collect())
+        table.sort(tags)
+        assert.are.same({ "budget", "vendor" }, tags)
+    end)
+
+    it("says what narrows the view, and nothing for the default", function()
+        assert.are.same({}, tasks.view_flags({}))
+        assert.are.same({ "#budget", "due this week", "closed too", "by note" },
+            tasks.view_flags({ tag = "budget", due = "week", state = "all", group = "note" }))
+    end)
+end)
+
+describe("to_entry: closed tasks and groups", function()
+    before_each(function() setup({ tasks = { require_tag = "todo" } }) end)
+
+    it("marks a done and a cancelled task, and leaves an open one bare", function()
+        assert.are.equal("n.md:1: ✓ a", t.to_entry({ rel = "n.md", lineno = 1, text = "a", done = true }))
+        assert.are.equal("n.md:1: ✗ a", t.to_entry({ rel = "n.md", lineno = 1, text = "a", cancelled = true }))
+        assert.are.equal("n.md:1: a", t.to_entry({ rel = "n.md", lineno = 1, text = "a" }))
+    end)
+
+    it("leads with the group's label, padded so the tasks line up", function()
+        local task = { rel = "n.md", lineno = 1, text = "a" }
+        local group = { label = "#ab", orphaned = {} }
+        assert.are.equal("n.md:1: #ab   │ a", t.to_entry(task, group, 5))
+    end)
+
+    it("spells out a step whose parent is in another group", function()
+        local parent = { rel = "n.md", lineno = 1, text = "job #todo" }
+        local child = { rel = "n.md", lineno = 2, text = "step", depth = 1,
+            parent = parent, context = "job #todo" }
+        local group = { label = "x", orphaned = { [child] = true } }
+        assert.are.equal("n.md:2: x │ step  ← job", t.to_entry(child, group, 1))
+    end)
+end)

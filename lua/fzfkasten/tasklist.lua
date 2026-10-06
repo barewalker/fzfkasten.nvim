@@ -35,6 +35,9 @@ local GROUPS = {
     FzfkastenPriority = "Statement", -- (A)
     FzfkastenDue = "Constant",       -- [due 2026-09-16]
     FzfkastenMeta = "Comment",       -- ↳, [1/3], ← context, and the source
+    FzfkastenOverdue = "Error",      -- [due 2026-09-16] once that day has passed
+    FzfkastenClosed = "Comment",     -- a done or cancelled row, when shown at all
+    FzfkastenGroup = "Title",        -- a group's heading, when the list is divided
 }
 for group, link in pairs(GROUPS) do
     vim.api.nvim_set_hl(0, group, { link = link, default = true })
@@ -140,6 +143,23 @@ end
 -- task's note and line off the right edge as virtual text -- there, but never
 -- in the way of reading the task, and never something a yank picks up.
 local function decorate(lineno, line, task)
+    if options().source ~= false then
+        vim.api.nvim_buf_set_extmark(buf, ns, lineno - 1, 0, {
+            virt_text = { { string.format("%s:%d", task.rel, task.lineno), "FzfkastenMeta" } },
+            virt_text_pos = "right_align",
+        })
+    end
+
+    -- A closed row is shown for the record, not to be acted on: greyed whole,
+    -- so it reads as past at a glance and no tag or date on it draws the eye.
+    if task.done or task.cancelled then
+        vim.api.nvim_buf_set_extmark(buf, ns, lineno - 1, 0, {
+            end_col = #line,
+            hl_group = "FzfkastenClosed",
+        })
+        return
+    end
+
     -- Every match, not the first: a task can carry several tags.
     local function hl(pattern, group, stop)
         local from, to = line:find(pattern)
@@ -155,7 +175,10 @@ local function decorate(lineno, line, task)
     hl("^%s*↳", "FzfkastenMeta", true)
     hl("%(%u%)", "FzfkastenPriority", true)
     hl("%[%d+/%d+%]", "FzfkastenMeta", true)
-    hl("%[due [^%]]+%]", "FzfkastenDue", true)
+    -- Only the day is compared, as the due filter does: a task due at 15:00
+    -- today is due today, not overdue, until tomorrow.
+    local overdue = task.due and task.due:sub(1, 10) < os.date("%Y-%m-%d")
+    hl("%[due [^%]]+%]", overdue and "FzfkastenOverdue" or "FzfkastenDue", true)
     -- The same pattern the scanner reads tags by, so what counts as a tag here
     -- is what counted as one there. Only up to the context arrow: what the
     -- task hangs off is coloured as context whole, tags and all.
@@ -170,13 +193,6 @@ local function decorate(lineno, line, task)
         from, to = head:find(tag, to + 1)
     end
     hl("←.*$", "FzfkastenMeta", true)
-
-    if options().source ~= false then
-        vim.api.nvim_buf_set_extmark(buf, ns, lineno - 1, 0, {
-            virt_text = { { string.format("%s:%d", task.rel, task.lineno), "FzfkastenMeta" } },
-            virt_text_pos = "right_align",
-        })
-    end
 end
 
 -- The note's lines, from the buffer when one is loaded and from disk otherwise.
@@ -331,20 +347,41 @@ local function render()
     local collected = tasks.collect(view.opts)
     local label = view.opts.inbox and "Inbox" or "Tasks"
     local order = view.opts.sort or "priority"
+    -- The filters and the grouping in force, after the ordering: a list
+    -- narrowed to `#budget` that does not say so reads as all there is.
+    local flags = tasks.view_flags(view.opts)
     local lines = {
-        string.format("%s — %d   ·   %s%s", label, #collected, order,
-            view.opts.reverse and ", reversed" or ""),
+        string.format("%s — %d   ·   %s%s%s", label, #collected, order,
+            view.opts.reverse and ", reversed" or "",
+            #flags > 0 and ("   ·   " .. table.concat(flags, " · ")) or ""),
         "",
     }
 
-    local rows = {}
-    for _, task in ipairs(collected) do
-        table.insert(lines, tasks.entry_text(task))
-        rows[#lines] = task
+    local rows, heads = {}, {}
+    if view.opts.group then
+        -- A heading per group, with a blank line between them. The headings
+        -- are not rows, so every action passes over them as it does the
+        -- list's own heading.
+        for i, group in ipairs(tasks.group(collected, view.opts.group)) do
+            if i > 1 then
+                table.insert(lines, "")
+            end
+            table.insert(lines, string.format("%s  (%d)", group.label, #group.tasks))
+            heads[#lines] = true
+            for _, task in ipairs(group.tasks) do
+                table.insert(lines, tasks.entry_text(task, group.orphaned[task]))
+                rows[#lines] = task
+            end
+        end
+    else
+        for _, task in ipairs(collected) do
+            table.insert(lines, tasks.entry_text(task))
+            rows[#lines] = task
+        end
     end
     if #collected == 0 then
-        table.insert(lines, view.opts.inbox
-            and "  Nothing waiting to be triaged."
+        table.insert(lines, #flags > 0 and "  Nothing in this view."
+            or view.opts.inbox and "  Nothing waiting to be triaged."
             or "  No open tasks.")
     end
 
@@ -352,6 +389,12 @@ local function render()
     set_lines(lines)
     vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
     vim.api.nvim_buf_set_extmark(buf, ns, 0, 0, { end_col = #lines[1], hl_group = "Title" })
+    for lineno in pairs(heads) do
+        vim.api.nvim_buf_set_extmark(buf, ns, lineno - 1, 0, {
+            end_col = #lines[lineno],
+            hl_group = "FzfkastenGroup",
+        })
+    end
     for lineno, task in pairs(rows) do
         decorate(lineno, lines[lineno], task)
     end
@@ -491,6 +534,31 @@ local ACTIONS = {
             end
             reshape({ inbox = not view.opts.inbox })
         end,
+    },
+    filter_tag = {
+        desc = "Show only one tag's tasks",
+        -- The chooser is an fzf window, and it hands the tag back once it has
+        -- closed -- by then the cursor may be anywhere, so the redraw goes
+        -- through `refresh`, which draws inside the list's own windows.
+        fn = function()
+            tasks.choose_tag(view.opts, function(tag)
+                if not view then return end
+                view.opts.tag = tag or false
+                refresh()
+            end)
+        end,
+    },
+    filter_due = {
+        desc = "Filter by due: overdue / today / week / none / all",
+        fn = function() reshape({ due = tasks.next_due_filter(view.opts.due) or false }) end,
+    },
+    closed = {
+        desc = "Show open / also closed / only closed",
+        fn = function() reshape({ state = tasks.next_state(view.opts.state) }) end,
+    },
+    group = {
+        desc = "Group by note / tag / due / not at all",
+        fn = function() reshape({ group = tasks.next_group(view.opts.group) or false }) end,
     },
     refresh = {
         desc = "Re-scan the notes",

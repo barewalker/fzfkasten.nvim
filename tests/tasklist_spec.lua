@@ -293,6 +293,89 @@ describe("tasklist: changing the view", function()
     end)
 end)
 
+describe("tasklist: filtering and grouping", function()
+    after_each(cleanup)
+
+    local function day(offset)
+        return os.date("%Y-%m-%d", require("fzfkasten.utils").days_from(nil, offset))
+    end
+
+    before_each(function()
+        setup()
+        note("a.md", {
+            "- [ ] (A) late #todo #budget due:" .. day(-2),
+            "- [ ] (B) later #todo due:" .. day(30),
+            "- [x] finished #todo",
+        })
+        note("b.md", { "- [ ] (C) other #todo" })
+        tasklist.open()
+    end)
+
+    it("D cycles the due filter, and the heading says which", function()
+        press("D")
+        assert.are.equal("Tasks — 1   ·   priority   ·   overdue", lines()[1])
+        assert.is_truthy(lines()[3]:find("late", 1, true))
+        press("D") press("D") press("D")
+        assert.is_truthy(lines()[1]:find("no due date", 1, true))
+        press("D")
+        assert.are.equal("Tasks — 3   ·   priority", lines()[1])
+    end)
+
+    it("says so when a filter leaves nothing", function()
+        note("b.md", { "- [ ] (C) other #todo due:" .. day(30) })
+        press("r")
+        press("D") press("D") press("D") press("D")
+        assert.are.equal("  Nothing in this view.", lines()[3])
+    end)
+
+    it("X shows the closed tasks too, then only them, marked", function()
+        press("X")
+        assert.is_truthy(lines()[1]:find("closed too", 1, true))
+        assert.are.equal(4, vim.tbl_count(tasklist._test.rows()))
+        press("X")
+        assert.are.equal("✓ finished", lines()[3])
+        press("X")
+        assert.are.equal(3, vim.tbl_count(tasklist._test.rows()))
+    end)
+
+    it("x on a closed row reopens it", function()
+        press("X") press("X")
+        goto_row("finished")
+        press("x")
+        assert.are.equal("- [ ] finished #todo", read("a.md")[3])
+    end)
+
+    it("= groups by note under headings that are not rows", function()
+        press("=")
+        assert.are.equal("a.md  (2)", lines()[3])
+        assert.is_nil(tasklist._test.rows()[3])
+        assert.is_truthy(lines()[4]:find("late", 1, true))
+        assert.are.equal("", lines()[6])
+        assert.are.equal("b.md  (1)", lines()[7])
+        assert.is_truthy(lines()[1]:find("by note", 1, true))
+    end)
+
+    it("= again groups by tag, then by due, then not at all", function()
+        press("=") press("=")
+        assert.are.equal("#budget  (1)", lines()[3])
+        press("=")
+        assert.are.equal("Overdue  (1)", lines()[3])
+        press("=")
+        assert.are.equal("Tasks — 3   ·   priority", lines()[1])
+    end)
+
+    it("colours an overdue date apart from one still to come", function()
+        local ns = vim.api.nvim_get_namespaces()["fzfkasten-tasklist"]
+        local groups = {}
+        for _, m in ipairs(vim.api.nvim_buf_get_extmarks(0, ns, 0, -1, { details = true })) do
+            local d = m[4]
+            if d.hl_group then groups[d.hl_group] = true end
+        end
+        assert.is_true(groups.FzfkastenOverdue)
+        assert.is_true(groups.FzfkastenDue)
+    end)
+end)
+
 describe("tasklist: colouring", function()
     after_each(cleanup)
 
@@ -313,7 +396,7 @@ describe("tasklist: colouring", function()
 
     it("colours every tag on a task, by the scanner's own tag pattern", function()
         setup({ tasks = { require_tag = "todo" } })
-        note("n.md", { "- [ ] (A) file the report #todo #budget due:2026-09-16" })
+        note("n.md", { "- [ ] (A) file the report #todo #budget due:2099-09-16" })
         tasklist.open()
         local groups = {}
         for _, m in ipairs(marks_on(3)) do groups[m[1]] = m[2] end
@@ -322,7 +405,7 @@ describe("tasklist: colouring", function()
         assert.is_falsy(lines()[3]:find("#todo", 1, true))
         assert.are.equal("FzfkastenTag", groups["#budget"])
         assert.are.equal("FzfkastenPriority", groups["(A)"])
-        assert.are.equal("FzfkastenDue", groups["[due 2026-09-16]"])
+        assert.are.equal("FzfkastenDue", groups["[due 2099-09-16]"])
     end)
 
     it("colours several tags on one task, and none inside the context", function()

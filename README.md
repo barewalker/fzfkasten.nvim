@@ -819,6 +819,10 @@ A due date is `due:YYYY-MM-DD`, or `due:YYYY-MM-DDTHH:MM` when a time matters �
 | `<alt-u>` | Put back the last line any of these rewrote |
 | `<alt-s>` | Cycle the ordering: priority → due → added → priority |
 | `<alt-r>` | Reverse whichever ordering is in force |
+| `<alt-t>` | Narrow to one tag, chosen from the tags the tasks in view carry. `(all tags)` clears it |
+| `<alt-e>` | Cycle the due filter: overdue → due by today → due this week → no due date → off |
+| `<alt-x>` | Cycle what is shown: open → done and cancelled too → only those → open |
+| `<alt-g>` | Cycle the grouping: by note → by tag → by due → flat |
 
 ### The list as a buffer — `:FzfKastenTaskList`
 
@@ -844,6 +848,10 @@ Tasks — 14   ·   priority
 | `a` | Capture a new task |
 | `u` | Put back the last line an action rewrote |
 | `s` / `S` | Cycle the ordering / reverse it |
+| `T` | Narrow to one tag |
+| `D` | Cycle the due filter |
+| `X` | Show the done and cancelled too, then only them |
+| `=` | Cycle the grouping |
 | `i` | Switch between the task list and the inbox |
 | `r` | Re-scan the notes |
 | `q` | Close |
@@ -902,6 +910,7 @@ tasks = {
     -- a list of keys (all bound to that action), or false to leave it to Vim.
     keys = {
       done = "x", cancel = "c", sort = "s",
+      filter_tag = "T", filter_due = "D", closed = "X", group = "=",
       preview = "p", preview_toggle = "P",
       preview_back = { "<Esc>", "<C-q>" },   -- pressed inside the preview window
       preview_half_page_down = "<C-d>", preview_half_page_up = "<C-u>",
@@ -920,10 +929,12 @@ The list is drawn, not parsed -- it has no syntax file and no parser -- so
 what a note's highlighting would colour, the list colours by hand, through
 highlight groups of its own: `FzfkastenTag` (`#budget`, every tag on a row, by
 the same `patterns.tag` the scanner reads them with), `FzfkastenPriority`
-(`(A)`), `FzfkastenDue` (`[due 2026-09-16]`) and `FzfkastenMeta` (the `↳`,
-the `[1/3]` subtask count, the `←` context and the note name at the right
-edge). They link to `Special`, `Statement`, `Constant` and `Comment` by
-default; a colorscheme, or `vim.api.nvim_set_hl(0, "FzfkastenTag", { ... })`
+(`(A)`), `FzfkastenDue` (`[due 2026-09-16]`), `FzfkastenOverdue` (the same,
+once that day has passed), `FzfkastenMeta` (the `↳`, the `[1/3]` subtask
+count, the `←` context and the note name at the right edge),
+`FzfkastenClosed` (a done or cancelled row, whole) and `FzfkastenGroup` (a
+group's heading). They link to `Special`, `Statement`, `Constant`, `Error`,
+`Comment`, `Comment` and `Title` by default; a colorscheme, or `vim.api.nvim_set_hl(0, "FzfkastenTag", { ... })`
 in your config, restyles them.
 
 ### Ordering the list
@@ -941,6 +952,39 @@ A task with no due date sorts **last** under `due`, not first — no due date me
 The ordering shows in the prompt (`Tasks (due, reversed)> `) so a short list reads as "ordered differently" rather than "all there is". The default ordering is left unsaid: a prompt that always carries a tag is one you stop reading.
 
 Changing the order reopens the picker, carrying your query over — the entries move, what you typed to narrow them doesn't. Reversing points the list the other way; it does **not** scramble the steps of a job, which stay in the order they are written under the item they belong to.
+
+### Narrowing and dividing the list
+
+Four more toggles, in the picker and the list buffer alike. Each one shows in
+the prompt (`Tasks (#budget, overdue)> `) and in the list's heading
+(`Tasks — 3   ·   priority   ·   #budget · overdue`), for the same reason the
+ordering does.
+
+| | Picker | List | What it does |
+|---|---|---|---|
+| Tag | `<alt-t>` | `T` | Keeps the tasks filed under one tag, chosen from the tags the tasks in view carry. A step of a tagged job counts as tagged |
+| Due | `<alt-e>` | `D` | `overdue` → `due by today` → `due this week` (the next seven days) → `no due date` → off. Each of the first three includes the one before it, since what was due on Tuesday is still due by Friday |
+| Closed | `<alt-x>` | `X` | Shows the done and cancelled too, marked `✓` / `✗`, then only them — where to look for "did I already do this?". `<ctrl-x>`/`x` on a done row reopens it |
+| Group | `<alt-g>` | `=` | Divides the list by note, by tag, or by due date (overdue, today, within a week, later, none) |
+
+**A step takes its job's due date** when it has none of its own, for both the
+filter and the grouping: "due this week" that dropped the steps would show the
+job without the work in it. `require_tag` is never a filter or a group of its
+own — every task carries it.
+
+**Grouping by tag puts a task under every tag it has**, and the untagged
+last. A step is drawn under its parent only when the parent is in the same
+group; otherwise it carries the parent along as context (`step  ← job`), the
+way a step whose parent was filtered out does.
+
+In the list buffer a group is a heading over its rows (`#budget  (3)`), which
+no action treats as a task. The picker has no rows that are not entries, so
+there the group's name leads each row instead (`Overdue │ (A) file the
+report`) — which also lets you type `overdue` or `#budget` to narrow to one.
+
+A filter that leaves nothing still opens the picker, so the next press of the
+same key moves on instead of throwing you out. The list remembers its filters
+and grouping when you close and reopen it, as it does the ordering.
 
 ### Subtasks, and the context a task line loses
 

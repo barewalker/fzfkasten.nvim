@@ -732,6 +732,261 @@ local function sort_tasks(tasks, sort, reverse)
     return tasks
 end
 
+-- Step `value` through `cycle`, wrapping round to nil ("off") after the last.
+-- Shared by the view toggles below, each of which is a short list of modes the
+-- picker and the list buffer cycle through the same way.
+local function next_in(cycle, value)
+    if value == nil then
+        return cycle[1]
+    end
+    for i, name in ipairs(cycle) do
+        if name == value then
+            return cycle[i + 1]
+        end
+    end
+    return nil
+end
+
+-- Which tasks a due filter keeps, each one wider than the last: what has run
+-- out, what runs out by the end of today, by a week from now -- and, apart,
+-- what has no due date at all. Cumulative because "what do I have to do by
+-- Friday" includes what was due on Tuesday and is still open.
+local DUE_FILTERS = { "overdue", "today", "week", "none" }
+
+-- Whether to show finished work. `open` is the default and is never shown
+-- in a prompt; `all` adds the done and cancelled, `closed` shows only them --
+-- which is where you look for "did I already do this?".
+local STATES = { "open", "all", "closed" }
+
+-- What the list can be divided by. Off (nil) is a flat list, the default.
+local GROUPS = { "note", "tag", "due" }
+
+--- The due filter after `due`: nil -> overdue -> today -> week -> none -> nil.
+--- @param due string|nil
+--- @return string|nil
+function M.next_due_filter(due)
+    return next_in(DUE_FILTERS, due)
+end
+
+--- The state after `state`: open -> all -> closed -> open.
+--- @param state string|nil
+--- @return string
+function M.next_state(state)
+    return next_in(STATES, state or "open") or STATES[1]
+end
+
+--- The grouping after `group`: nil -> note -> tag -> due -> nil.
+--- @param group string|nil
+--- @return string|nil
+function M.next_group(group)
+    return next_in(GROUPS, group)
+end
+
+-- The due date a task runs out on: its own, or that of the nearest item it is
+-- a step of. A step with no date of its own is due when the job is, and a
+-- filter on "due this week" that dropped it would split the job in two.
+local function effective_due(task)
+    local t = task
+    while t do
+        if t.due then
+            return t.due
+        end
+        t = t.parent
+    end
+    return nil
+end
+
+-- Today and a week from today, as `YYYY-MM-DD`, to compare due dates against.
+-- A due date may carry a time (`2026-07-25T15:00`); only its day is compared,
+-- which is what "overdue" means to someone reading a list in the morning.
+local function due_horizon()
+    return os.date("%Y-%m-%d"), os.date("%Y-%m-%d", utils.days_from(nil, 7))
+end
+
+-- Where a due date falls: overdue, today, within the week, later, or none.
+-- Disjoint, so the grouping can put each task in exactly one of them.
+local function due_bucket(due, today, week_end)
+    if not due then
+        return "none"
+    end
+    local day = due:sub(1, 10)
+    if day < today then
+        return "overdue"
+    elseif day == today then
+        return "today"
+    elseif day <= week_end then
+        return "week"
+    end
+    return "later"
+end
+
+local DUE_KEEPS = {
+    overdue = { overdue = true },
+    today = { overdue = true, today = true },
+    week = { overdue = true, today = true, week = true },
+    none = { none = true },
+}
+
+-- The tags a task is filed under: its own, then those of the items it is a
+-- step of, nearest first, without repeats. `require_tag` is left out -- every
+-- task carries it, so as a filter it keeps everything and as a group it
+-- holds the whole list.
+--
+-- The ancestors' tags count for the same reason `require_tag` is inherited: a
+-- step of a #budget job is about the budget, and a `#budget` filter that
+-- dropped the steps would show the job without the work in it.
+local function tags_of(task)
+    local pattern = config.options.patterns.tag
+    local skip = config.options.tasks.require_tag
+    local seen, tags = {}, {}
+    local t = task
+    while t do
+        for name in t.text:gmatch(pattern) do
+            if name ~= skip and not seen[name] then
+                seen[name] = true
+                table.insert(tags, name)
+            end
+        end
+        t = t.parent
+    end
+    return tags
+end
+
+--- Every tag the given tasks are filed under (see `tags_of`), in the order
+--- they first appear -- so under the default ordering the tags on the most
+--- pressing work come first.
+--- @param list table entries from `M.collect`
+--- @return string[] tag names, without the `#`
+function M.tags_in(list)
+    local seen, tags = {}, {}
+    for _, task in ipairs(list) do
+        for _, name in ipairs(tags_of(task)) do
+            if not seen[name] then
+                seen[name] = true
+                table.insert(tags, name)
+            end
+        end
+    end
+    return tags
+end
+
+local DUE_LABELS = {
+    overdue = "Overdue",
+    today = "Today",
+    week = "Within a week",
+    later = "Later",
+    none = "No due date",
+}
+local DUE_ORDER = { "overdue", "today", "week", "later", "none" }
+
+--- Divide an already ordered task list into groups, keeping that order inside
+--- each one.
+---
+---   note : one group per note, in the order the notes first come up.
+---   tag  : one group per tag (see `tags_of`), in the order the tags first come
+---          up, and the untagged last. A task with two tags is in both.
+---   due  : overdue, today, within a week, later, no due date -- in that order,
+---          whatever the list is sorted by, since they are a calendar.
+---
+--- A step is shown under its parent only when the parent is in the same group;
+--- otherwise it is spelled out with its context, as a step whose parent was
+--- filtered out is. `orphaned` holds that answer per group.
+--- @param list table entries from `M.collect`, already sorted
+--- @param by string one of "note", "tag", "due"
+--- @return table list of `{ key, label, tasks, orphaned = { [task] = bool } }`
+function M.group(list, by)
+    local groups, index = {}, {}
+    local function add(key, label, task)
+        local g = index[key]
+        if not g then
+            g = { key = key, label = label, tasks = {}, orphaned = {} }
+            index[key] = g
+            table.insert(groups, g)
+        end
+        table.insert(g.tasks, task)
+    end
+
+    local today, week_end = due_horizon()
+    for _, task in ipairs(list) do
+        if by == "tag" then
+            local tags = tags_of(task)
+            for _, name in ipairs(tags) do
+                add(name, "#" .. name, task)
+            end
+            if #tags == 0 then
+                add("", "(no tag)", task)
+            end
+        elseif by == "due" then
+            local bucket = due_bucket(effective_due(task), today, week_end)
+            add(bucket, DUE_LABELS[bucket], task)
+        else
+            add(task.rel, task.rel, task)
+        end
+    end
+
+    if by == "tag" and index[""] then
+        -- The untagged go last: what you filed is what you were grouping for.
+        for i, g in ipairs(groups) do
+            if g.key == "" then
+                table.remove(groups, i)
+                table.insert(groups, g)
+                break
+            end
+        end
+    elseif by == "due" then
+        local ordered = {}
+        for _, key in ipairs(DUE_ORDER) do
+            if index[key] then
+                table.insert(ordered, index[key])
+            end
+        end
+        groups = ordered
+    end
+
+    for _, g in ipairs(groups) do
+        local members = {}
+        for _, task in ipairs(g.tasks) do
+            members[task] = true
+        end
+        for _, task in ipairs(g.tasks) do
+            g.orphaned[task] = task.parent ~= nil and not members[task.parent]
+        end
+    end
+    return groups
+end
+
+local STATE_LABELS = { all = "closed too", closed = "closed only" }
+local DUE_FILTER_LABELS = {
+    overdue = "overdue",
+    today = "due by today",
+    week = "due this week",
+    none = "no due date",
+}
+
+--- What narrows or divides the view, in words, for a prompt or a heading to
+--- show: `{ "#budget", "due this week", "closed too", "by note" }`. Empty for
+--- the default view, which is never spelled out -- a label that is always
+--- there is one you stop reading. The ordering is not in here; the picker and
+--- the list buffer each say it their own way.
+--- @param opts table the view's options
+--- @return string[]
+function M.view_flags(opts)
+    local flags = {}
+    if opts.tag then
+        table.insert(flags, "#" .. opts.tag)
+    end
+    if opts.due then
+        table.insert(flags, DUE_FILTER_LABELS[opts.due] or opts.due)
+    end
+    if STATE_LABELS[opts.state] then
+        table.insert(flags, STATE_LABELS[opts.state])
+    end
+    if opts.group then
+        table.insert(flags, "by " .. opts.group)
+    end
+    return flags
+end
+
 --- Collect tasks from every note under `home`.
 --- @param opts table|nil `{ since_days = number|false, done = boolean,
 ---   cancelled = boolean, inbox = boolean, sort = string, reverse = boolean }`.
@@ -739,6 +994,12 @@ end
 ---   returns the checkboxes `require_tag` leaves out. `done` and `cancelled`
 ---   each add that state to the result; both are left out otherwise. `sort` is
 ---   "priority" (the default), "due" or "added", and `reverse` flips it.
+---
+---   The view filters: `state` is "open" (the default), "all" or "closed", and
+---   sets `done` and `cancelled` both; `tag` keeps the tasks filed under that
+---   tag, the items they are steps of counting (`#` optional); `due` is
+---   "overdue", "today" (and before), "week" (the next seven days, and before)
+---   or "none" (no due date), a step taking its parent's date when it has none.
 --- @return table list of `{ text, id, done, done_at, cancelled, cancelled_at,
 ---   priority, due, path, rel, lineno, date, depth, parent, context, children,
 ---   children_closed, orphaned }`. `id` is the line's `^id` when it has one. The last six describe the nesting: `depth`
@@ -913,13 +1174,32 @@ function M.collect(opts)
         end
     end
 
-    if not opts.done then
+    local state = opts.state or "open"
+    if not (opts.done or state ~= "open") then
         tasks = vim.tbl_filter(function(t) return not t.done end, tasks)
     end
     -- Cancelled tasks are out of both lists by default: dropping one was the
     -- point. `cancelled = true` is how you go looking for what you dropped.
-    if not opts.cancelled then
+    if not (opts.cancelled or state ~= "open") then
         tasks = vim.tbl_filter(function(t) return not t.cancelled end, tasks)
+    end
+    if state == "closed" then
+        tasks = vim.tbl_filter(function(t) return t.done or t.cancelled end, tasks)
+    end
+    if opts.tag and opts.tag ~= "" then
+        local want = opts.tag:gsub("^#", "")
+        -- `require_tag` is on every task, and `tags_of` leaves it out for that
+        -- reason: filtering by it would otherwise empty the list.
+        tasks = want == o.require_tag and tasks or vim.tbl_filter(function(t)
+            return vim.tbl_contains(tags_of(t), want)
+        end, tasks)
+    end
+    if opts.due and DUE_KEEPS[opts.due] then
+        local keeps = DUE_KEEPS[opts.due]
+        local today, week_end = due_horizon()
+        tasks = vim.tbl_filter(function(t)
+            return keeps[due_bucket(effective_due(t), today, week_end)] == true
+        end, tasks)
     end
 
     -- A subtask whose parent the filters just dropped -- an open step under a
@@ -987,12 +1267,22 @@ end
 --- Public because the picker and the task list buffer both render it, and a
 --- task that read differently in the two would be a task you had to recognise
 --- twice.
+--- A done or cancelled task, shown only when the view asks for them, is marked
+--- `✓` or `✗` at its head; an open one carries no mark, so the default list
+--- reads as it always has.
 --- @param task table one entry from `M.collect`
+--- @param orphaned boolean|nil overrides `task.orphaned`: a grouped view
+---   decides per group whether the parent is on a row above
 --- @return string
-function M.entry_text(task)
+function M.entry_text(task, orphaned)
+    if orphaned == nil then
+        orphaned = task.orphaned
+    end
     local depth = task.depth or 0
-    local nested = depth > 0 and task.parent ~= nil and not task.orphaned
+    local nested = depth > 0 and task.parent ~= nil and not orphaned
     local lead = nested and (string.rep("  ", depth) .. "↳ ") or ""
+    local mark = task.done and "✓ " or task.cancelled and "✗ " or ""
+    lead = lead .. mark
     local prefix = task.priority and string.format("(%s) ", task.priority) or ""
     local children = task.children or 0
     local progress = children > 0
@@ -1005,8 +1295,20 @@ end
 
 -- "rel:lineno: (A) text  [due ...]" -- the same shape show_backlinks uses, so
 -- fzf-lua's entry_to_file parses it with `cwd = home`.
-local function to_entry(task)
-    return string.format("%s:%d: %s", task.rel, task.lineno, M.entry_text(task))
+--
+-- In a grouped view the group's label leads the text, padded to `width` so the
+-- tasks line up: fzf has no rows that are not entries, so a heading line is not
+-- an option, and the label on every row is also what lets you type `#budget`
+-- or `Overdue` to narrow to a group.
+local function to_entry(task, group, width)
+    local label = ""
+    local orphaned
+    if group then
+        local pad = width - vim.fn.strdisplaywidth(group.label)
+        label = group.label .. string.rep(" ", pad) .. " │ "
+        orphaned = group.orphaned[task]
+    end
+    return string.format("%s:%d: %s%s", task.rel, task.lineno, label, M.entry_text(task, orphaned))
 end
 
 --- Flip a single checkbox in a note on disk, keeping any loaded buffer in step.
@@ -1719,12 +2021,44 @@ function M.inbox(opts)
     M.pick(vim.tbl_extend("force", opts or {}, { inbox = true }))
 end
 
+-- The row of the tag chooser that clears the filter. Not a tag -- `#` cannot
+-- start it -- so it can never be mistaken for one.
+local ALL_TAGS = "(all tags)"
+
+--- Choose a tag to narrow the tasks to, from the tags the tasks in `opts`'s
+--- view are filed under -- not every tag in the collection, which would offer
+--- tags that lead to an empty list. The first row clears the filter.
+--- @param opts table the view's options; its own `tag` is ignored
+--- @param on_pick fun(tag: string|nil) the tag without `#`, or nil for all
+function M.choose_tag(opts, on_pick)
+    local tags = M.tags_in(M.collect(vim.tbl_extend("force", opts, { tag = false })))
+    local rows = { ALL_TAGS }
+    for _, name in ipairs(tags) do
+        table.insert(rows, "#" .. name)
+    end
+    fzf.fzf_exec(rows, vim.tbl_deep_extend("force", config.options.fzf, {
+        prompt = "Tag> ",
+        fzf_opts = { ["--no-sort"] = "" },
+        actions = {
+            ['default'] = function(selected)
+                local row = selected and selected[1]
+                if not row then return end
+                local tag = row ~= ALL_TAGS and row:gsub("^#", "") or nil
+                after_fzf(function() on_pick(tag) end)
+            end,
+        },
+    }))
+end
+
 --- Pick an open task and jump to it in its source note.
 --- `<ctrl-x>` marks the task done in its note and refreshes the list in place.
 --- @param opts table|nil forwarded to `M.collect`
 function M.pick(opts)
     opts = opts or {}
-    if #M.collect(opts) == 0 then
+    -- Only an unfiltered view that is empty is nothing to show. A filter that
+    -- matches nothing still opens, so the next press of the same key can move
+    -- on to the next filter instead of throwing you out of the picker.
+    if #M.collect(opts) == 0 and #M.view_flags(opts) == 0 then
         vim.notify(opts.inbox and "Inbox is empty." or "No open tasks found.",
             vim.log.levels.INFO)
         return
@@ -1738,8 +2072,22 @@ function M.pick(opts)
     -- from a romaji query; keep only the tasks whose text it matches so you can
     -- narrow a Japanese list without typing Japanese.
     local function contents(cb)
-        for _, task in ipairs(M.collect(opts)) do
-            if romaji.matches(task.text, opts.filter) then
+        local shown = vim.tbl_filter(function(task)
+            return romaji.matches(task.text, opts.filter)
+        end, M.collect(opts))
+        if opts.group then
+            local groups = M.group(shown, opts.group)
+            local width = 0
+            for _, g in ipairs(groups) do
+                width = math.max(width, vim.fn.strdisplaywidth(g.label))
+            end
+            for _, g in ipairs(groups) do
+                for _, task in ipairs(g.tasks) do
+                    cb(to_entry(task, g, width))
+                end
+            end
+        else
+            for _, task in ipairs(shown) do
                 cb(to_entry(task))
             end
         end
@@ -1766,14 +2114,23 @@ function M.pick(opts)
     -- to be readable at a glance to tell "nothing urgent" from "sorted by
     -- something else". The default ordering is left unsaid -- a prompt that
     -- always carries a tag is one you stop reading.
+    -- The filters and the grouping go there too, for the same reason: a list
+    -- narrowed to `#budget` that does not say so reads as all there is.
     local label = opts.inbox and "Inbox" or "Tasks"
+    local flags = {}
     if (opts.sort and opts.sort ~= SORTS[1]) or opts.reverse then
-        label = label .. " (" .. (opts.sort or SORTS[1])
-            .. (opts.reverse and ", reversed" or "") .. ")"
+        table.insert(flags, (opts.sort or SORTS[1]) .. (opts.reverse and ", reversed" or ""))
     end
-    local header = romaji.header_hint(config.options.tasks.require_tag and opts.inbox
-        and "<ctrl-t> tag as task   <ctrl-x> mark done   <ctrl-d> cancel   <alt-a> add   <alt-u> undo   <alt-s> sort   <alt-r> reverse"
-        or "<ctrl-x> mark done   <ctrl-d> cancel   <alt-a> add   <alt-u> undo   <alt-s> sort   <alt-r> reverse")
+    vim.list_extend(flags, M.view_flags(opts))
+    if #flags > 0 then
+        label = label .. " (" .. table.concat(flags, ", ") .. ")"
+    end
+    -- Two lines: what the keys do to a task, then what they do to the view.
+    local header = (config.options.tasks.require_tag and opts.inbox
+        and "<ctrl-t> tag as task   <ctrl-x> mark done   <ctrl-d> cancel   <alt-a> add   <alt-u> undo"
+        or "<ctrl-x> mark done   <ctrl-d> cancel   <alt-a> add   <alt-u> undo")
+        .. "\n" .. romaji.header_hint(
+            "<alt-s> sort   <alt-r> reverse   <alt-t> tag   <alt-e> due   <alt-x> closed   <alt-g> group")
 
     -- Reopen with `changed` merged in, carrying the fzf query over so changing
     -- the order doesn't throw away what you had typed to narrow the list.
@@ -1887,6 +2244,46 @@ function M.pick(opts)
             ['alt-r'] = {
                 fn = function(selected)
                     reopen({ reverse = not opts.reverse }, selected and selected[1])
+                end,
+                field_index = "{q}",
+            },
+            -- Narrow to one tag, chosen from the tags the tasks in view carry.
+            -- The chooser is a second picker, so this one closes first.
+            ['alt-t'] = {
+                fn = function(selected)
+                    local query = selected and selected[1]
+                    after_fzf(function()
+                        M.choose_tag(opts, function(tag)
+                            local next_opts = vim.tbl_extend("force", opts, {})
+                            next_opts.tag = tag
+                            next_opts.query = query
+                            M.pick(next_opts)
+                        end)
+                    end)
+                end,
+                field_index = "{q}",
+            },
+            -- Cycle the due filter: overdue -> due by today -> this week -> no
+            -- due date -> off. Not `<alt-d>`, which is fzf's kill-word.
+            ['alt-e'] = {
+                fn = function(selected)
+                    reopen({ due = M.next_due_filter(opts.due) or false }, selected and selected[1])
+                end,
+                field_index = "{q}",
+            },
+            -- Cycle what is shown: open -> closed too -> closed only -> open.
+            -- On a closed row `<ctrl-x>` reopens a done task and `<ctrl-d>` a
+            -- cancelled one, the same keys that closed them.
+            ['alt-x'] = {
+                fn = function(selected)
+                    reopen({ state = M.next_state(opts.state) }, selected and selected[1])
+                end,
+                field_index = "{q}",
+            },
+            -- Cycle the grouping: by note -> by tag -> by due -> flat.
+            ['alt-g'] = {
+                fn = function(selected)
+                    reopen({ group = M.next_group(opts.group) or false }, selected and selected[1])
                 end,
                 field_index = "{q}",
             },
