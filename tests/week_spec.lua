@@ -290,6 +290,28 @@ describe("week.digest_lines", function()
         assert.is_falsy(none:find("## Due", 1, true))
     end)
 
+    it("orders tasks with the same stamp or due date by note, then line", function()
+        -- b.md is dated earlier, so collecting in "added" order puts it first;
+        -- the tie-break has to undo that, not keep it.
+        note("a.md", { "---", "date: 2026-09-10", "---",
+            "- [x] a one done:2026-09-09 10:00", "- [x] a two done:2026-09-09 10:00",
+            "- [ ] a due due:2026-09-16", "- [ ] a due too due:2026-09-16" })
+        note("b.md", { "---", "date: 2026-09-08", "---",
+            "- [x] b one done:2026-09-09 10:00", "- [ ] b due due:2026-09-16" })
+        local range = week.range("", on(2026, 9, 12))
+        local text = table.concat(week.digest_lines(range, week.notes(range), { ahead = 1 }), "\n")
+        -- The open tasks are listed in "Still open" too, so each search starts
+        -- at the heading of the section it is about.
+        local function before(x, y, from)
+            local at = from and text:find(from, 1, true) or 1
+            return text:find(x, at, true) < text:find(y, at, true)
+        end
+        assert.is_true(before("✓ a one", "✓ a two"))
+        assert.is_true(before("✓ a two", "✓ b one"))
+        assert.is_true(before("☐ a due due", "☐ a due too", "## Due"))
+        assert.is_true(before("☐ a due too", "☐ b due", "## Due"))
+    end)
+
     it("gives each source a section, and a failing one a line", function()
         note("daily/2026-09-08.md", { "# Day" })
         local range = week.range("", on(2026, 9, 12))

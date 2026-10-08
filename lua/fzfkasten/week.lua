@@ -510,8 +510,19 @@ function M.digest_lines(range, notes, opts)
                 end
             end
         end
-        table.sort(finished, function(a, b) return a.done_at < b.done_at end)
-        table.sort(due_ahead, function(a, b) return a.due < b.due end)
+        -- `table.sort` is not stable, so tasks with the same key -- ticked off
+        -- in the same minute, due on the same day -- would come out in an
+        -- order that depends on the input. The note and the line settle it,
+        -- so the digest reads the same every time it is drawn.
+        local function by(key)
+            return function(a, b)
+                if a[key] ~= b[key] then return a[key] < b[key] end
+                if a.rel ~= b.rel then return a.rel < b.rel end
+                return a.lineno < b.lineno
+            end
+        end
+        table.sort(finished, by("done_at"))
+        table.sort(due_ahead, by("due"))
 
         if #finished > 0 then
             local rows = {}
