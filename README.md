@@ -171,6 +171,7 @@ Here is the default configuration. You can override any of these settings in the
     disable_diagnostics = true, -- turn off vim.diagnostic for the buffer
     disable_format = true,      -- set disable_autoformat / autoformat / format_on_save
     on_open = nil,              -- optional function(bufnr) for extra tweaks
+    highlight_tags = true,      -- colour #tags in every note at once
   },
   claude = {
     enabled = false, -- set to true to enable Claude Code integration
@@ -217,6 +218,13 @@ new note, rename, …) is therefore set up so that, by default:
 
 This only affects buffers opened *through* fzfkasten — notes you open by other
 means (`:edit`, netrw, another picker) are left untouched.
+
+**Tags are coloured in every note** under `home`, however it was opened
+(`:edit`, or a fresh Neovim started by ttykasten or a shell alias), from the
+first redraw. A markdown language server such as marksman colours them too,
+but only after reading the whole collection, a second or two late. The group
+is `FzfkastenNoteTag`, linked to `@constant` (where marksman's tag colour
+ends up); `note_buffer.highlight_tags = false` turns it off.
 
 Turn either off in `setup`:
 

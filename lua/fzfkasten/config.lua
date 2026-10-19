@@ -517,6 +517,10 @@ M.defaults = {
   disable_format = true,
   -- Optional extra hook: function(bufnr) called after marking the buffer.
   on_open = nil,
+  -- Colour #tags (`patterns.tag`) in every note under `home`, however it was
+  -- opened, from the first redraw rather than once a language server has
+  -- read the collection. The group is FzfkastenNoteTag.
+  highlight_tags = true,
  },
  claude = {
   enabled = false,
@@ -603,6 +607,10 @@ function M.setup(user_opts)
  if M.options.home == "" then
   vim.notify("[Fzfkasten] 'home' directory is not configured!", vim.log.levels.ERROR)
   return
+ end
+
+ if M.options.note_buffer.highlight_tags ~= false then
+  require('fzfkasten.tag_highlight').enable()
  end
 end
 
