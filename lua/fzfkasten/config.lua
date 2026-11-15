@@ -576,6 +576,46 @@ M.defaults = {
  --
  -- fzf-lua merges these over its own defaults per key, so naming one key keeps
  -- the rest -- and keeps the binds the note finder adds for `/kaigi`.
+ -- Pictures and files linked from notes, kept where Notejo keeps them.
+ --
+ -- `:FzfKastenAttach {file}` adds one and links it at the cursor; without a
+ -- file it lists the newest ones in `pick_from`. `gf` on a `[](…)`, `![](…)`
+ -- or bare URL opens what it points at. A Google Drive link, or one under
+ -- `webdav_url`, is fetched with rclone into `cache` and opened with `viewer`
+ -- -- so on WSL nothing goes through Windows, provided `viewer` is a Linux
+ -- program (WSLg shows it).
+ attachments = {
+  -- Where `:FzfKastenAttach` puts a file: "drive" (`drive_folder`, through
+  -- `rclone_remote`), "webdav" (`webdav_remote`), "repository"
+  -- (`repo_folder`), or nil to leave it off.
+  home = nil,
+  -- A Drive remote set up with `rclone config`, e.g. "personal:". Also what
+  -- Drive links are fetched through.
+  rclone_remote = nil,
+  -- The folder in Drive. Notejo's is "Notejo", at the top of My Drive.
+  drive_folder = "Notejo",
+  -- A WebDAV folder, twice: as rclone reaches it ("nas:Notejo", a webdav
+  -- remote and the path under it) and as a link names it
+  -- ("https://host/remote.php/dav/files/me/Notejo", what Notejo is given).
+  -- Both are needed; links under `webdav_url` are fetched through the remote.
+  webdav_remote = nil,
+  webdav_url = nil,
+  repo_folder = "attachments",
+  -- The command a file is opened with, the path appended: { "imv" }, { "eog" }.
+  -- nil uses vim.ui.open, which on WSL hands the file to Windows.
+  viewer = nil,
+  -- Where fetched files are kept. They can always be fetched again.
+  cache = vim.fn.stdpath("cache") .. "/fzfkasten/attachments",
+  -- How long a fetched file is kept after it was last opened, and how much
+  -- is kept at most (the ones opened longest ago go first). false: no limit.
+  keep_days = 30,
+  keep_mb = 500,
+  -- The folders `:FzfKastenAttach` without a file lists, one level deep,
+  -- newest first -- where downloads and screenshots arrive.
+  pick_from = { "~/Downloads", "~/Pictures" },
+  pick_limit = 300,
+ },
+
  fzf = {
   winopts = {
    height = 0.85,

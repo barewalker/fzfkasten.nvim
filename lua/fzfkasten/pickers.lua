@@ -1148,6 +1148,10 @@ function M.goto_link()
     local under = link_under_cursor()
     if under and under ~= "" then
         open_link_target(under)
+    -- A `[](…)`, a picture, or an address: what it points at, opened on this
+    -- side of WSL rather than handed to Windows.
+    elseif require("fzfkasten.attach").open_under_cursor() then
+        return
     else
         local ok, err = pcall(vim.cmd, "normal! gf")
         if not ok then

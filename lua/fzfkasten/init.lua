@@ -16,6 +16,9 @@ M.recent_notes = function(limit) return require('fzfkasten.pickers').recent_note
 M.link_to_daily = function() require('fzfkasten.pickers').link_to_daily() end
 M.follow_link = function() require('fzfkasten.pickers').follow_link() end
 M.goto_link = function() require('fzfkasten.pickers').goto_link() end
+M.attach = function(file) require('fzfkasten.attach').attach(file) end
+M.attach_link = function() require('fzfkasten.attach').link_existing() end
+M.open_attachment = function() require('fzfkasten.attach').open_under_cursor() end
 -- Mints the id on the line under the cursor, so it writes to the buffer -- the
 -- one entry point here that does.
 M.yank_link = function() require('fzfkasten.pickers').yank_block_link() end

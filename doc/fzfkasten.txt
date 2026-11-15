@@ -190,6 +190,34 @@ COMMANDS
   starting with ^ names a line rather than a heading ([[note#^t3k9aa]]): the
   cursor lands on the line carrying that id, wherever in the note it has moved
   to and however it has been reworded since. See FzfKastenYankLink.
+  FzfKastenGotoLink on a [](…), a ![](…) or a bare address instead opens
+  what it points at, as FzfKastenOpenAttachment does.
+- FzfKastenOpenAttachment: Open the picture, file or address under the cursor.
+  A Google Drive link is fetched by its id with rclone, through
+  attachments.rclone_remote; a link under attachments.webdav_url is fetched
+  through attachments.webdav_remote. Both go into attachments.cache once and
+  are opened from there afterwards, until they have not been opened for
+  attachments.keep_days (30) or the cache passes attachments.keep_mb (500),
+  when the ones opened longest ago are let go. A path is read relative to the
+  note. Whatever it is, it is opened with attachments.viewer -- a command such
+  as { "imv" }, the file appended -- or with |vim.ui.open| when none is set.
+  On WSL vim.ui.open is wslview, that is Windows; a Linux viewer shown through
+  WSLg keeps Windows out of it.
+- FzfKastenAttach [file]: Put a file where Notejo keeps them and link it at the
+  cursor. Without a file, choose one from the newest in the folders of
+  attachments.pick_from (~/Downloads and ~/Pictures, one level deep).
+  attachments.home = "drive" sends it with rclone to attachments.drive_folder
+  ("Notejo", the folder Notejo itself uses) and links it by its Drive id, so
+  the link survives the file being moved or renamed; "webdav" sends it to
+  attachments.webdav_remote and links its address under attachments.webdav_url;
+  "repository" copies it into attachments.repo_folder and links it relative
+  to the note, never over a file already there. The name is the note's, then
+  the moment: d-20261115-114135.jpg. A picture is linked as ![](…), anything
+  else as [name](…).
+- FzfKastenAttachLink: Link a file that is already in attachments.drive_folder
+  (or, with attachments.home = "webdav", in the WebDAV folder) at the cursor,
+  sending nothing: the folder is listed newest first, and the one chosen is
+  linked as FzfKastenAttach would have linked it.
 - FzfKastenYankLink: Yank a link to the line the cursor is on. Mints a ^id at
   the end of that line if it carries none, writes it into the buffer, and puts
   [[note#^id]] in the yank registers -- so the note holding a task is where you

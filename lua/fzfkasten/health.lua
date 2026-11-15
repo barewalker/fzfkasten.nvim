@@ -300,6 +300,43 @@ local function check_calendar()
     end
 end
 
+-- Attachments: only checked when something has been asked of them.
+local function check_attachments()
+    local opts = (config.options or {}).attachments or {}
+    if not opts.home and not opts.rclone_remote and not opts.webdav_remote and not opts.viewer then return end
+    health.start("Attachments")
+    if opts.home == "webdav" or opts.webdav_remote or opts.webdav_url then
+        if not (opts.webdav_remote and opts.webdav_url) then
+            health.warn("attachments.webdav_remote and attachments.webdav_url are both needed: "
+                .. "the folder as rclone reaches it, and as a link names it.")
+        elseif vim.fn.executable("rclone") ~= 1 then
+            health.error("rclone is not installed, so WebDAV files cannot be fetched or sent.")
+        else
+            health.ok("WebDAV folder: " .. opts.webdav_remote)
+        end
+    end
+    if opts.home == "drive" or opts.rclone_remote then
+        if vim.fn.executable("rclone") == 1 then
+            health.ok("rclone found")
+        else
+            health.error("rclone is not installed, so Drive files cannot be fetched or sent.")
+        end
+        if opts.home == "drive" and not opts.rclone_remote then
+            health.warn("attachments.home is \"drive\" but attachments.rclone_remote is not set.")
+        end
+    end
+    local viewer = type(opts.viewer) == "string" and opts.viewer or (opts.viewer or {})[1]
+    if viewer then
+        if vim.fn.executable(viewer) == 1 then
+            health.ok("viewer: " .. viewer)
+        else
+            health.error("attachments.viewer '" .. viewer .. "' is not installed.")
+        end
+    elseif vim.fn.has("wsl") == 1 then
+        health.warn("No attachments.viewer: files open through vim.ui.open, which on WSL is Windows.")
+    end
+end
+
 function M.check()
     check_neovim()
     check_setup()
@@ -308,6 +345,7 @@ function M.check()
     check_tasks()
     check_calendar()
     check_optional()
+    check_attachments()
 end
 
 return M

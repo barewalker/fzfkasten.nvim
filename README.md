@@ -21,6 +21,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **Link Insertion**: Interactive link insertion with `[[` trigger.
 - [x] **Follow Link**: Jump to the link under the cursor (or pick from all links in the buffer). Resolves notes recursively across sub-directories, and can create missing notes from a template. Mappable to `gf` with a native-`gf` fallback.
 - [x] **Backlinks**: Find all notes linking to the current note. `[[note]]`, `[[note|alias]]`, `[[note#heading]]`, `[[folder/note]]` and `[[note.md]]` all count as links to `note`; only whole names match, so `[[note-old]]` is not one.
+- [x] **Pictures and files**: `:FzfKastenAttach` puts a file in Google Drive, a WebDAV folder or the repository — where [Notejo](https://github.com/barewalker/notejo) keeps them — and links it at the cursor; `gf` on the link fetches it with rclone and opens it in a viewer of your choosing. See [Pictures and files](#pictures-and-files).
 - [x] **Line links**: `:FzfKastenYankLink` mints a `^id` on the line under the cursor and yanks `[[note#^id]]`, so a link can point at one task inside a note rather than at the note or at the heading over it. Following it lands on that line however it has been reworded since. The id survives ticking the task off, cancelling it and setting a due date, and never shows up in the task list. See [Line links](#line-links).
 - [x] **The graph drawn**: `:FzfKastenGraphExport` writes the same graph out as one self-contained HTML page that lays it out and lets you move around in it — the shape of the collection, which no list has an answer to. See [Drawing the graph](#drawing-the-graph).
 - [x] **Link graph**: The whole collection read as a graph, in four pickers — what the note you are in is joined to (both directions, several links out), which notes are joined to nothing, which links point at notes that were never written, and which notes everything converges on. See [The link graph](#the-link-graph).
@@ -292,6 +293,8 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
 *   **`:FzfKastenPanel`**: A menu of the commands that take an argument, with the usual arguments filled in — the digest and the week's notes for this week and last, the agenda for this week, this and next, and last, the recent notes, the graph pickers — and, last, the note panel (`:FzfKastenNotePanel`): pick a note, then open it, list its backlinks, rename or delete it. `panel.items` adds entries of your own (`{ label = "...", fn = "FzfKastenAgenda -2..0" }` or a function). The one-shot commands are not here on purpose: they are a key each, and a menu in front of them is a keystroke more.
 
 *   **`:FzfKastenRecent`**: The notes written most recently, newest first, with preview — by mtime, which is the right clock for "what did I touch lately" even though it is the wrong one for "when is this note from" (a git checkout rewrites it). `recent.limit` (50) and `recent.ignore_dirs` (`templates`).
+
+*   **`:FzfKastenAttach [file]`** / **`:FzfKastenAttachLink`** / **`:FzfKastenOpenAttachment`**: Add a picture or a file and link it at the cursor; link one already in the folder; open the one under the cursor. See [Pictures and files](#pictures-and-files).
 
 *   **`:FzfKastenLinkToDaily`**: Yank a link to the line the cursor is on, as `:FzfKastenYankLink` does, and write it into today's daily note as well — after the cursor of the window the daily is open in when it is on screen, at its end otherwise, and created from its template first when today's does not exist yet. The link goes through the daily's buffer when it is loaded, so unsaved edits there are kept. `block_id.daily_bullet` (`"- "`) is written in front of it. Four moves (yank, switch, paste, switch back) become one, for the case where a line in the minutes or a task list is what the day's thread is about.
 
@@ -1523,6 +1526,74 @@ require("fzfkasten").setup({
 ```
 
 This will append the output of `gcalcli agenda --tsv` to your new daily notes.
+
+## Pictures and files
+
+A note links to a picture or a file; the file itself is kept somewhere else.
+The places and the links are the ones [Notejo](https://github.com/barewalker/notejo),
+the Android app over the same collection, uses, so what one adds the other opens.
+
+| `attachments.home` | Where the file goes | What the note carries |
+|---|---|---|
+| `nil` (default) | nowhere — `:FzfKastenAttach` is off | links you paste yourself |
+| `"drive"` | `drive_folder` in Google Drive, through `rclone_remote` | `https://drive.google.com/file/d/<id>/view` |
+| `"webdav"` | the folder `webdav_remote` names | the file's address under `webdav_url` |
+| `"repository"` | `repo_folder` in the collection | a path relative to the note |
+
+Outside the repository is the better default: a binary committed to git stays in
+the history for good, and does not compress when the repository is encrypted.
+
+```lua
+attachments = {
+  home = "drive",
+  rclone_remote = "personal:",   -- a Drive remote from `rclone config`
+  drive_folder = "Notejo",       -- the same path Notejo is set to
+  viewer = { "imv" },            -- nil: vim.ui.open
+},
+```
+
+For WebDAV (Nextcloud, a NAS, `rclone serve webdav`) the folder is named twice —
+as rclone reaches it, and as a link names it. The second is the URL Notejo is given.
+
+```lua
+attachments = {
+  home = "webdav",
+  webdav_remote = "nas:Notejo",
+  webdav_url = "https://cloud.example/remote.php/dav/files/me/Notejo",
+},
+```
+
+**Adding.** `:FzfKastenAttach {file}` sends the file and writes the link where the
+cursor was when you asked — the upload takes seconds, and you may have moved on.
+`:FzfKastenAttach` alone lists the files in `pick_from` (`~/Downloads` and
+`~/Pictures`, one level deep) newest first, so the screenshot just taken or the
+PDF just downloaded is the first line. A picture is linked as `![](…)`, anything
+else as `[name](…)`. The file is named after the note and the moment
+(`2026-11-15-20261115-114135.jpg`), as Notejo names it; in the repository it
+never replaces a file already there.
+
+**Linking what is already there.** `:FzfKastenAttachLink` lists the Drive folder
+(the WebDAV one with `home = "webdav"`) newest first and writes the link to the
+one you choose — for a photo the phone sent, or a file dropped into the folder by
+hand. Nothing is sent.
+
+```lua
+{ "<leader>kp", "<cmd>FzfKastenAttach<CR>", ft = "markdown", desc = "attach a [p]icture or file" },
+{ "<leader>kP", "<cmd>FzfKastenAttachLink<CR>", ft = "markdown", desc = "link one already in the folder" },
+```
+
+**Opening.** `:FzfKastenGotoLink` (`gf`) or `:FzfKastenOpenAttachment` on a
+`[](…)`, a `![](…)` or a bare address opens what it points at. A Drive link is
+fetched by its id through `rclone_remote`, a link under `webdav_url` through
+`webdav_remote` — no browser, and no signing in: rclone holds the credentials.
+That matters on WSL, where `vim.ui.open` hands everything to Windows; with
+`viewer` set to a Linux program the picture opens in a WSLg window instead.
+
+Fetched files are kept in `cache` and opened from there the next time. One not
+opened for `keep_days` (30) is let go, and when the whole passes `keep_mb` (500)
+the ones opened longest ago go first; `false` lifts either limit.
+
+`:checkhealth fzfkasten` says whether rclone and the viewer are there.
 
 ## Image Preview
 
