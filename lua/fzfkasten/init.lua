@@ -22,6 +22,8 @@ M.open_attachment = function() require('fzfkasten.attach').open_under_cursor() e
 -- Mints the id on the line under the cursor, so it writes to the buffer -- the
 -- one entry point here that does.
 M.yank_link = function() require('fzfkasten.pickers').yank_block_link() end
+-- Writes ids too: one for a single line, one at each end of a range.
+M.yank_embed = function(first, last) require('fzfkasten.pickers').yank_block_embed(first, last) end
 M.show_backlinks = function() require('fzfkasten.pickers').show_backlinks(vim.api.nvim_buf_get_name(0)) end
 M.rename_note = function() require('fzfkasten.core').rename_note_interactively() end
 M.link_tree = function(depth)

@@ -101,6 +101,20 @@ M.defaults = {
      -- is on.
      alias_max = 40,
    },
+   -- `![[note#^id]]` shows the lines the link points at under the link, as
+   -- virtual lines: read from the other note each time, never written into
+   -- this one. `![[note#Heading]]` shows a section, `![[note#^a..^b]]` the
+   -- lines from one id to another, `![[note]]` the whole note.
+   -- `:FzfKastenYankEmbed` writes one for the line, or the lines selected.
+   embed = {
+     enabled = true,
+     -- Show this many lines of what is quoted and say how many were left
+     -- out. 0 shows everything.
+     max_lines = 20,
+     -- Watch the files quoted from, so a quote follows a change made outside
+     -- Neovim (a sync, another program) without waiting for the next redraw.
+     watch = true,
+   },
    patterns = {
      tag = [[#([%w_-]+)]],
      link = [=[%[%[(.-)%]%]]=],
@@ -651,6 +665,9 @@ function M.setup(user_opts)
 
  if M.options.note_buffer.highlight_tags ~= false then
   require('fzfkasten.tag_highlight').enable()
+ end
+ if (M.options.embed or {}).enabled ~= false then
+  require('fzfkasten.embed').enable()
  end
 end
 

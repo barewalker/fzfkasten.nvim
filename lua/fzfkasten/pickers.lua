@@ -1026,6 +1026,8 @@ local function jump_to_anchor(anchor)
     -- `#^id` names a line, anything else names a heading.
     local id = trimmed:match("^%^(.+)$")
     if id then
+        -- An embed may name a range, `^a..^b`: go to where it starts.
+        id = id:gsub("%.%..*$", "")
         return jump_to_block_id(id)
     end
     local wanted = trimmed:lower()
@@ -1222,6 +1224,25 @@ end
 --- An id already on the line is reused. Yanking twice is then the same link
 --- twice, not two ids for one line -- and two ids is the state where rewording
 --- the line breaks whichever of the links is not the one you follow.
+--- The `^id` of line `lnum` of this buffer, minted into it when the line has
+--- none. nil and a reason when the line cannot carry one.
+--- @return string|nil id, string line the line as it was, or why there is no id
+local function id_at(lnum)
+    local line = vim.api.nvim_buf_get_lines(0, lnum - 1, lnum, false)[1] or ""
+    if vim.trim(line) == "" then
+        return nil, "Nothing on this line to link to."
+    end
+    local id = utils.block_id(line)
+    if not id then
+        if not vim.bo.modifiable or vim.bo.readonly then
+            return nil, "This buffer cannot be written to, so no id can be minted."
+        end
+        id = utils.new_block_id(utils.block_ids(vim.api.nvim_buf_get_lines(0, 0, -1, false)))
+        vim.api.nvim_buf_set_lines(0, lnum - 1, lnum, false, { utils.with_block_id(line, id) })
+    end
+    return id, line
+end
+
 --- The link to the line under the cursor, minting its `^id` into the buffer
 --- when the line has none. nil and a reason when there is nothing to link to.
 --- @return string|nil link, string|nil why
@@ -1232,18 +1253,9 @@ local function block_link_here()
     end
 
     local lnum = vim.api.nvim_win_get_cursor(0)[1]
-    local line = vim.api.nvim_buf_get_lines(0, lnum - 1, lnum, false)[1] or ""
-    if vim.trim(line) == "" then
-        return nil, "Nothing on this line to link to."
-    end
-
-    local id = utils.block_id(line)
+    local id, line = id_at(lnum)
     if not id then
-        if not vim.bo.modifiable or vim.bo.readonly then
-            return nil, "This buffer cannot be written to, so no id can be minted."
-        end
-        id = utils.new_block_id(utils.block_ids(vim.api.nvim_buf_get_lines(0, 0, -1, false)))
-        vim.api.nvim_buf_set_lines(0, lnum - 1, lnum, false, { utils.with_block_id(line, id) })
+        return nil, line
     end
 
     local target = name .. "#^" .. id
@@ -1263,6 +1275,46 @@ function M.yank_block_link()
     end
     set_yank_registers(link)
     vim.notify("[Fzfkasten] Yanked " .. link)
+end
+
+--- Yank an embed of lines `first` to `last` of this note: `![[note#^id]]` for
+--- one line, `![[note#^a..^b]]` for several, minting the ids the ends lack.
+--- Pasted into another note, it shows these lines there (see `embed.lua`).
+---
+--- Blank lines at either end are stepped over rather than refused: a visual
+--- selection takes the empty line after a paragraph more often than not, and
+--- an empty line has nowhere to carry an id.
+--- @param first integer|nil defaults to the cursor's line
+--- @param last integer|nil defaults to `first`
+function M.yank_block_embed(first, last)
+    local name = get_note_name(vim.api.nvim_buf_get_name(0))
+    if not name or name == "" then
+        return vim.notify("[Fzfkasten] This buffer is not a note, so nothing can quote it.", vim.log.levels.WARN)
+    end
+    first = first or vim.api.nvim_win_get_cursor(0)[1]
+    last = last or first
+    if first > last then
+        first, last = last, first
+    end
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    while first < last and vim.trim(lines[first] or "") == "" do first = first + 1 end
+    while last > first and vim.trim(lines[last] or "") == "" do last = last - 1 end
+
+    local a, why = id_at(first)
+    if not a then
+        return vim.notify("[Fzfkasten] " .. why, vim.log.levels.WARN)
+    end
+    local target = name .. "#^" .. a
+    if last > first then
+        local b, why_b = id_at(last)
+        if not b then
+            return vim.notify("[Fzfkasten] " .. why_b, vim.log.levels.WARN)
+        end
+        target = target .. "..^" .. b
+    end
+    local embed = "![[" .. target .. "]]"
+    set_yank_registers(embed)
+    vim.notify("[Fzfkasten] Yanked " .. embed)
 end
 
 --- Where today's daily note is, whether or not it exists yet.

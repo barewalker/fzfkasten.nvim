@@ -222,6 +222,20 @@ COMMANDS
   (or, with attachments.home = "webdav", in the WebDAV folder) at the cursor,
   sending nothing: the folder is listed newest first, and the one chosen is
   linked as FzfKastenAttach would have linked it.
+- FzfKastenYankEmbed: Yank an embed of the line the cursor is on, as
+  ![[note#^id]], or of the lines selected, as ![[note#^a..^b]], minting the
+  ids the way FzfKastenYankLink does. An embed is a link with a ! in front,
+  and the lines it points at are shown under it as virtual lines: ![[note#^id]]
+  shows the line (and, for a list item, what is nested under it),
+  ![[note#^a..^b]] everything from one line to the other, ![[note#Heading]]
+  the section, ![[note]] the note without its frontmatter; with no note named
+  (![[#Heading]]) it quotes from the note it is in. Nothing is written into the
+  note, so the quote is always what the other note says now: read from its
+  buffer when it is open here (unsaved edits included), from its file otherwise,
+  and the file is watched so a change made outside Neovim shows up too. The
+  cursor cannot enter the quoted lines; follow the link to reach the text.
+  Configure with embed = { enabled = true, max_lines = 20, watch = true }.
+  Highlight groups: FzfkastenEmbed, FzfkastenEmbedBorder, FzfkastenEmbedMissing.
 - FzfKastenYankLink: Yank a link to the line the cursor is on. Mints a ^id at
   the end of that line if it carries none, writes it into the buffer, and puts
   [[note#^id]] in the yank registers -- so the note holding a task is where you

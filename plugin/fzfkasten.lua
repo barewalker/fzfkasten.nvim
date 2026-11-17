@@ -20,6 +20,7 @@ cmd("FzfKastenAttachLink", function() require('fzfkasten').attach_link() end, { 
 cmd("FzfKastenOpenAttachment", function() require('fzfkasten').open_attachment() end, { desc = "Fzfkasten: Open the picture, file or address under the cursor (Drive links through rclone)" })
 cmd("FzfKastenGotoLink", function() require('fzfkasten').goto_link() end, { desc = "Fzfkasten: Follow link under cursor (gf-style, falls back to native gf)" })
 cmd("FzfKastenYankLink", function() require('fzfkasten').yank_link() end, { desc = "Fzfkasten: Yank a link to the line under the cursor, minting its ^id" })
+cmd("FzfKastenYankEmbed", function(o) require('fzfkasten').yank_embed(o.line1, o.line2) end, { range = true, desc = "Fzfkasten: Yank an embed (![[note#^id]]) of this line, or of the selected lines, minting the ^ids" })
 cmd("FzfKastenShowBacklinks", function() require('fzfkasten').show_backlinks() end, { desc = "Fzfkasten: Show Backlinks" })
 cmd("FzfKastenLinkTree", function(o)
 	require('fzfkasten').link_tree(tonumber(o.args))

@@ -34,6 +34,7 @@ A super lightweight and fast Zettelkasten plugin for Neovim, powered by `fzf-lua
 - [x] **The calendar**: `:FzfKastenAgenda` browses a week of your calendar, `{{agenda}}` writes the day's events into a note from its template, and the week digest puts the week's events in front of its notes. Read through gcalcli by default, or any command that prints the same lines; cached, so a note's creation never waits on the network. See [The calendar](#the-calendar).
 - [x] **A week at a time**: `:FzfKastenWeekNotes` lists the notes dated in a week, whatever they are filed under; `:FzfKastenWeekDigest` lays them out in one buffer — outline, opening lines, and the tasks finished — as the material a weekly review is written from. See [Looking back over a week](#looking-back-over-a-week).
 - [x] **Claude Code Integration**: Optional. Sends notes and named prompts to the Claude Code running in a herdr or tmux pane — on this machine or over ssh — by typing into it. Disabled by default; see [Claude Code Integration](#claude-code-integration).
+- [x] **Embeds**: `![[note#^id]]` shows the lines the link points at under the link — one line, a list item with what is nested under it, a range `![[note#^a..^b]]`, or a section `![[note#Heading]]`. They are drawn, not copied: what you see is what the other note says now. See [Embeds](#embeds).
 - [x] **Link Aliasing**: `[[note|alias]]` syntax is supported across follow link, backlinks, and rename. Anchors too — `[[note#heading]]` for a section and `[[note#^id]]` for a single line — and all three read them alike.
 - [x] **Filename Sanitization**: Unicode-safe default (preserves CJK) with a user-overridable `transform.sanitize_filename` hook.
 - [x] **Template Placeholders**: Built-in `{{title}} {{date}} {{hdate}} {{year}} {{month}} {{day}} {{week}} {{isoyear}} {{time}}` plus user-defined entries via `template_placeholders` (string or function values).
@@ -298,6 +299,8 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
 
 *   **`:FzfKastenLinkToDaily`**: Yank a link to the line the cursor is on, as `:FzfKastenYankLink` does, and write it into today's daily note as well — after the cursor of the window the daily is open in when it is on screen, at its end otherwise, and created from its template first when today's does not exist yet. The link goes through the daily's buffer when it is loaded, so unsaved edits there are kept. `block_id.daily_bullet` (`"- "`) is written in front of it. Four moves (yank, switch, paste, switch back) become one, for the case where a line in the minutes or a task list is what the day's thread is about.
 
+*   **`:FzfKastenYankEmbed`**: Yank an embed of the line the cursor is on, `![[note#^id]]`, or of the lines selected, `![[note#^a..^b]]`, minting the ids. Pasted into another note it shows those lines there, and keeps showing what they currently say. See [Embeds](#embeds).
+
 *   **`:FzfKastenYankLink`**: Yank a link to the line the cursor is on. It mints a `^id` at the end of that line if it carries none, writes it into the buffer, and puts `[[note#^id]]` in the yank registers — so you copy the link from the note that holds the task, and paste it into the note that refers to it. An id already on the line is reused, so yanking twice writes the same link twice rather than a second id.
 
     Following such a link (`:FzfKastenFollowLink`, or `gf`) puts the cursor on the line carrying that id, wherever it has moved to in the note and however it has been reworded since. This is for a task no heading identifies: a meeting note whose `## Other business` holds three unrelated tasks cannot be pointed into with `[[note#Other business]]`, because that anchor names all three.
@@ -404,6 +407,60 @@ cut to `block_id.alias_max` characters (counted in characters, so a Japanese lin
 is not cut mid-glyph). Tags are dropped from an alias either way — the tag search
 reads every line in the collection, not only the ones that meant it, so an alias
 carrying `#todo` would file the note it was pasted into under it too.
+
+### Embeds
+
+A link says where something is. An embed — the same link with a `!` in front —
+shows what is there, under the line it is written on:
+
+```markdown
+The figure we agreed on:
+![[2026-08-17 planning meeting#^fig001]]
+▎ The figure is 120, to be confirmed by finance.
+```
+
+| Written as | Shows |
+|---|---|
+| `![[note#^id]]` | the line carrying that id; for a list item, the items nested under it too |
+| `![[note#^id1..^id2]]` | everything from one line to the other |
+| `![[note#Heading]]` | the section, down to the next heading of the same level or above |
+| `![[note]]` | the whole note, without its frontmatter |
+| `![[#Heading]]`, `![[#^id]]` | the same, from the note the embed is written in |
+
+**`:FzfKastenYankEmbed`** writes one for you: on a line it mints the `^id` (as
+`:FzfKastenYankLink` does) and yanks `![[note#^id]]`; over a visual selection it
+mints an id on the first and the last line and yanks `![[note#^a..^b]]`. Paste
+it where the lines should appear.
+
+**Nothing is copied.** The quoted lines are virtual lines: the note holds the
+`![[…]]` and nothing else. So there is no second copy to fall behind, a quoted
+`- [ ] … #todo` is not a second task in the task list, and a sync has no diff to
+carry. The price is that the cursor cannot enter them and a search does not find
+them — follow the link (`gf`) to get to the text itself — and that anything
+other than Neovim shows only the `![[…]]`.
+
+**They follow the other note.** A note open in this Neovim is read from its
+buffer, so the quote changes as you type there, before you save. A note that is
+not open is read from its file and watched, so a change made by a sync or by
+another program shows up without a keypress. Line numbers are never involved:
+an id or a heading still names the same lines after the note around them is
+edited.
+
+A quote longer than `embed.max_lines` (20) is cut, with a line saying how much
+was left out. A note, heading or id that is not there is said so in place of
+the quote. An embed is still a link: it follows, shows up in backlinks and is
+renamed with its note like any other.
+
+```lua
+embed = {
+  enabled = true,
+  max_lines = 20,   -- 0 shows everything
+  watch = true,     -- follow changes made outside Neovim
+},
+```
+
+The colours are `FzfkastenEmbed` (the text), `FzfkastenEmbedBorder` (the bar,
+and the "more lines" note) and `FzfkastenEmbedMissing`.
 
 ## The link graph
 
