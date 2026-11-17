@@ -40,7 +40,11 @@ local function drawn()
     for _, m in ipairs(vim.api.nvim_buf_get_extmarks(0, embed._test.ns, 0, -1, { details = true })) do
         local texts = {}
         for _, virt in ipairs(m[4].virt_lines or {}) do
-            texts[#texts + 1] = virt[2][1]
+            local text = ""
+            for i = 2, #virt do
+                text = text .. virt[i][1]
+            end
+            texts[#texts + 1] = text
         end
         out[m[2] + 1] = texts
     end
@@ -231,6 +235,42 @@ describe("an embed in a note", function()
         vim.cmd("edit " .. note("daily.md", { "```", "![[minutes#^fig001]]", "```", "![[minutes#^fig001]]" }))
         assert.are.same({ "The figure is 120." }, shown(4, { "The figure is 120." }))
         assert.is_nil(drawn()[2])
+    end)
+end)
+
+describe("embed.highlight", function()
+    -- Neovim ships the markdown parser from 0.10; without it there is nothing
+    -- to colour with and the quote is drawn plain.
+    local has_parser = pcall(vim.treesitter.get_string_parser, "x", "markdown")
+
+    it("colours a quote as markdown, inline constructs and fenced code included", function()
+        if not has_parser then
+            return
+        end
+        local marks = embed.highlight({ "## Budget", "see *this* and #todo", "```lua", "local x = 1", "```" })
+        assert.is_truthy(marks[1][4]:match("^@markup%.heading"))
+        assert.is_nil(marks[2][1])
+        assert.is_truthy(marks[2][6]:match("^@markup%.italic"))
+        assert.is_truthy(marks[4][1]:match("%.lua$") or marks[4][1]:match("^@markup%.raw"))
+    end)
+
+    it("draws the colours, cut where the line is wrapped", function()
+        if not has_parser then
+            return
+        end
+        cleanup()
+        setup()
+        note("minutes.md", { "## Budget ^head01", "plain #todo" })
+        vim.cmd("edit " .. note("daily.md", { "![[minutes#^head01..^head01]]", "![[minutes]]" }))
+        shown(1, { "## Budget" })
+        local m = vim.api.nvim_buf_get_extmarks(0, embed._test.ns, 0, -1, { details = true })
+        local heading = m[1][4].virt_lines[1]
+        assert.are.same("FzfkastenEmbed", heading[#heading][2][1])
+        assert.is_truthy(heading[#heading][2][2]:match("^@markup%.heading"))
+        -- A tag is coloured as it is in the note it came from.
+        local tagged = m[2][4].virt_lines[2]
+        assert.are.same({ "#todo", { "FzfkastenEmbed", "FzfkastenNoteTag" } }, tagged[#tagged])
+        cleanup()
     end)
 end)
 

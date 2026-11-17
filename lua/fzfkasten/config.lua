@@ -111,6 +111,9 @@ M.defaults = {
      -- Show this many lines of what is quoted and say how many were left
      -- out. 0 shows everything.
      max_lines = 20,
+     -- Colour what is quoted as markdown (treesitter), the way the note it
+     -- comes from is coloured. Off draws it in FzfkastenEmbed alone.
+     highlight = true,
      -- Watch the files quoted from, so a quote follows a change made outside
      -- Neovim (a sync, another program) without waiting for the next redraw.
      watch = true,

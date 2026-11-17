@@ -192,6 +192,32 @@ function M.extract(lines, anchor)
     return trim_blank(lines, start, stop)
 end
 
+-- Where `text` is cut so that no piece is wider than `width` cells, as byte
+-- ranges into it: { from, to, indent }, the indent being what a continuation
+-- line is given in front. Ranges rather than strings, because the colours of
+-- a line are kept by byte and have to be cut at the same places.
+local function pieces(text, width)
+    width = math.max(width, 20)
+    if vim.fn.strdisplaywidth(text) <= width then
+        return { { from = 1, to = #text, indent = "" } }
+    end
+    local indent = text:match("^ *")
+    if #indent > width / 2 then
+        indent = ""
+    end
+    local out, from, used = {}, 1, 0
+    for at, ch in text:gmatch("()([%z\1-\127\194-\244][\128-\191]*)") do
+        local w = vim.fn.strdisplaywidth(ch)
+        if used + w > width and at > from then
+            out[#out + 1] = { from = from, to = at - 1, indent = #out > 0 and indent or "" }
+            from, used = at, #indent
+        end
+        used = used + w
+    end
+    out[#out + 1] = { from = from, to = #text, indent = #out > 0 and indent or "" }
+    return out
+end
+
 --- `text` cut into pieces no wider than `width` cells. Virtual lines are not
 --- wrapped by Neovim, so a paragraph kept on one line would otherwise run off
 --- the window. Counted in cells, so a Japanese line breaks where it looks full.
@@ -201,28 +227,77 @@ end
 --- @return string[]
 function M.wrap(text, width)
     text = text:gsub("\t", "    ")
-    width = math.max(width, 20)
-    if vim.fn.strdisplaywidth(text) <= width then
-        return { text }
-    end
-    local indent = text:match("^ *")
-    if #indent > width / 2 then
-        indent = ""
-    end
-    local out, piece, used = {}, {}, 0
-    for ch in text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
-        local w = vim.fn.strdisplaywidth(ch)
-        if used + w > width and #piece > 0 then
-            out[#out + 1] = table.concat(piece)
-            piece, used = { indent }, #indent
-        end
-        piece[#piece + 1] = ch
-        used = used + w
-    end
-    if #piece > 0 then
-        out[#out + 1] = table.concat(piece)
+    local out = {}
+    for _, p in ipairs(pieces(text, width)) do
+        out[#out + 1] = p.indent .. text:sub(p.from, p.to)
     end
     return out
+end
+
+-- The colours of quoted lines. A virtual line is not buffer text, so nothing
+-- highlights it for us: the lines are parsed here as markdown, on their own,
+-- and the captures of the highlight queries are laid over them by hand --
+-- injected languages too, which is what colours emphasis, links and the code
+-- inside a fence.
+--
+-- Parsed as a fragment rather than cut out of a parse of the whole note: the
+-- fragment is at most `max_lines` long, where the note is as long as it is and
+-- would be parsed again for every quote from it. What that costs is the rare
+-- quote that starts inside a construct it does not show the start of.
+local hl_cache, hl_cached = {}, 0
+
+--- @param lines string[]
+--- @return table<integer, table<integer, string>>|nil per line, the group of each byte
+function M.highlight(lines)
+    local text = table.concat(lines, "\n")
+    if hl_cache[text] ~= nil then
+        return hl_cache[text] or nil
+    end
+
+    local marks = {}
+    for i = 1, #lines do
+        marks[i] = {}
+    end
+    local ok = pcall(function()
+        -- With the newline a file ends in: without it the last line is not
+        -- closed, and a lone heading or the fence ending a code block is not
+        -- read as what it is.
+        local source = text .. "\n"
+        local parser = vim.treesitter.get_string_parser(source, "markdown")
+        parser:parse(true)
+        -- A tree's own captures before those of the trees injected into it, so
+        -- the inner, more specific colour is the one left standing.
+        parser:for_each_tree(function(tree, ltree)
+            local lang = ltree:lang()
+            local query = vim.treesitter.query.get(lang, "highlights")
+            if not query then
+                return
+            end
+            for id, node in query:iter_captures(tree:root(), source) do
+                local name = query.captures[id]
+                if name:sub(1, 1) ~= "_" and name ~= "spell" and name ~= "nospell" and name ~= "conceal" then
+                    local group = "@" .. name .. "." .. lang
+                    local sr, sc, er, ec = node:range()
+                    for row = sr, er do
+                        local line = lines[row + 1]
+                        if line then
+                            local to = row == er and ec or #line
+                            for col = (row == sr and sc or 0) + 1, math.min(to, #line) do
+                                marks[row + 1][col] = group
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end)
+
+    -- No markdown parser on this Neovim: remembered too, so it is asked once.
+    if hl_cached > 200 then
+        hl_cache, hl_cached = {}, 0
+    end
+    hl_cache[text], hl_cached = ok and marks or false, hl_cached + 1
+    return ok and marks or nil
 end
 
 -- Which file a name is. One `rg --files` for the whole collection, asked for
@@ -391,11 +466,41 @@ local function quote(target, from, ctx)
         last = first + max - 1
     end
 
-    local out = {}
+    local shown_lines = {}
     for lineno = first, last do
         -- The id names the line; it is not part of what the line says.
-        for _, piece in ipairs(M.wrap(utils.strip_block_id(lines[lineno]), ctx.width)) do
-            out[#out + 1] = { { BAR, "FzfkastenEmbedBorder" }, { piece, "FzfkastenEmbed" } }
+        shown_lines[#shown_lines + 1] = (utils.strip_block_id(lines[lineno]):gsub("\t", "    "))
+    end
+    local marks = options().highlight ~= false and M.highlight(shown_lines) or nil
+    local tags = (config.options.note_buffer or {}).highlight_tags ~= false
+
+    local out = {}
+    for i, text in ipairs(shown_lines) do
+        local groups = marks and marks[i] or {}
+        if tags then
+            -- Tags are coloured here as they are in the note itself.
+            local ranges = require('fzfkasten.tag_highlight').ranges(text, config.options.patterns.tag)
+            if #ranges > 0 then
+                groups = vim.deepcopy(groups)
+                for _, r in ipairs(ranges) do
+                    for col = r[1] + 1, r[2] do
+                        groups[col] = "FzfkastenNoteTag"
+                    end
+                end
+            end
+        end
+        for _, p in ipairs(pieces(text, ctx.width)) do
+            local chunks = { { BAR, "FzfkastenEmbedBorder" }, { p.indent, "FzfkastenEmbed" } }
+            local a = p.from
+            while a <= p.to do
+                local group, b = groups[a], a
+                while b < p.to and groups[b + 1] == group do
+                    b = b + 1
+                end
+                chunks[#chunks + 1] = { text:sub(a, b), group and { "FzfkastenEmbed", group } or "FzfkastenEmbed" }
+                a = b + 1
+            end
+            out[#out + 1] = chunks
         end
     end
     if cut > 0 then

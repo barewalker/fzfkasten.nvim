@@ -455,12 +455,23 @@ renamed with its note like any other.
 embed = {
   enabled = true,
   max_lines = 20,   -- 0 shows everything
+  highlight = true, -- colour the quote as markdown
   watch = true,     -- follow changes made outside Neovim
 },
 ```
 
-The colours are `FzfkastenEmbed` (the text), `FzfkastenEmbedBorder` (the bar,
-and the "more lines" note) and `FzfkastenEmbedMissing`.
+**They are coloured as the note they come from is.** Virtual lines are not
+buffer text, so no highlighter reaches them; the quoted lines are parsed as
+markdown here (treesitter, with the parser Neovim ships) and the colours laid
+over them — headings, emphasis, links, checkboxes, the code inside a fence, and
+`#tags` in the colour they have everywhere else. They are the colours of your
+colorscheme's `@markup.*` groups. What a plugin *draws* over a note — icons for
+bullets, concealed markup — is not reproduced: a quote shows the markdown as
+written.
+
+`FzfkastenEmbed` lies under all of it (the text nothing else colours),
+`FzfkastenEmbedBorder` is the bar and the "more lines" note, and
+`FzfkastenEmbedMissing` what is said when there is nothing to quote.
 
 ## The link graph
 

@@ -234,7 +234,10 @@ COMMANDS
   buffer when it is open here (unsaved edits included), from its file otherwise,
   and the file is watched so a change made outside Neovim shows up too. The
   cursor cannot enter the quoted lines; follow the link to reach the text.
-  Configure with embed = { enabled = true, max_lines = 20, watch = true }.
+  The quote is coloured as markdown (treesitter), tags included; a plugin's
+  icons and concealing are not reproduced.
+  Configure with embed = { enabled = true, max_lines = 20, highlight = true,
+  watch = true }.
   Highlight groups: FzfkastenEmbed, FzfkastenEmbedBorder, FzfkastenEmbedMissing.
 - FzfKastenYankLink: Yank a link to the line the cursor is on. Mints a ^id at
   the end of that line if it carries none, writes it into the buffer, and puts
