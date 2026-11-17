@@ -214,6 +214,10 @@ COMMANDS
   to the note, never over a file already there. The name is the note's, then
   the moment: d-20261115-114135.jpg. A picture is linked as ![](…), anything
   else as [name](…).
+  To have such pictures drawn in the note itself, give snacks.image
+  require("fzfkasten.attach").resolve as its image.resolve option: a Drive
+  or WebDAV picture is then fetched behind the note and drawn in place,
+  where the terminal can draw pictures at all.
 - FzfKastenAttachLink: Link a file that is already in attachments.drive_folder
   (or, with attachments.home = "webdav", in the WebDAV folder) at the cursor,
   sending nothing: the folder is listed newest first, and the one chosen is

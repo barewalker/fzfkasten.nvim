@@ -496,3 +496,94 @@ describe("linking a file already there", function()
         assert.are.equal("", vim.api.nvim_buf_get_lines(0, 0, 1, false)[1])
     end)
 end)
+
+describe("showing a picture in the note", function()
+    after_each(cleanup)
+
+    local real_redraw = attach._redraw
+    after_each(function() attach._redraw = real_redraw end)
+
+    local function redrawn()
+        local notes = {}
+        attach._redraw = function(note) table.insert(notes, note) end
+        return notes
+    end
+
+    it("leaves paths and other addresses to whoever draws them", function()
+        setup({ attachments = { rclone_remote = "gdrive:" } })
+        local asked = script({})
+        assert.is_nil(attach.resolve(home .. "/d.md", "attachments/a.jpg"))
+        assert.is_nil(attach.resolve(home .. "/d.md", "https://example.com/a.jpg"))
+        assert.are.equal(0, #asked)
+    end)
+
+    it("fetches a Drive picture behind the note, then has it drawn again", function()
+        setup({ attachments = { rclone_remote = "gdrive:" } })
+        local notes = redrawn()
+        local finish
+        local asked = {}
+        attach._run = function(command, on_done)
+            table.insert(asked, command)
+            finish = function()
+                vim.fn.writefile({ "jpeg" }, command[#command] .. "photo.jpg")
+                on_done(0, "", "")
+            end
+        end
+        local src = "https://drive.google.com/file/d/PIC1/view"
+
+        local first = attach.resolve(home .. "/d.md", src)
+        assert.are.equal(home .. "/.cache/blank.png", first)
+        assert.are.equal(1, vim.fn.filereadable(first))
+        -- Drawn again before it has arrived: still one fetch.
+        assert.are.equal(first, attach.resolve(home .. "/d.md", src))
+        assert.are.equal(1, #asked)
+        assert.are.same({ "rclone", "backend", "copyid", "gdrive:", "PIC1" }, vim.list_slice(asked[1], 1, 5))
+
+        finish()
+        assert.are.same({ home .. "/d.md", home .. "/d.md" }, notes)
+        assert.are.equal(home .. "/.cache/PIC1/photo.jpg", attach.resolve(home .. "/d.md", src))
+        assert.are.equal(1, #asked)
+    end)
+
+    it("answers at once for one already fetched", function()
+        setup({ attachments = { webdav_remote = "nas:N", webdav_url = "https://c.example/N" } })
+        local asked = script({ { 0, "", "", before = function(command) vim.fn.writefile({ "x" }, command[#command]) end } })
+        redrawn()
+        attach.resolve(home .. "/d.md", "https://c.example/N/a%20b.png")
+        local path = attach.resolve(home .. "/d.md", "https://c.example/N/a%20b.png")
+        assert.are.equal("a b.png", vim.fn.fnamemodify(path, ":t"))
+        assert.are.equal(1, #asked)
+    end)
+
+    it("does not ask again for one that could not be fetched", function()
+        setup({ attachments = { rclone_remote = "gdrive:" } })
+        local notes = redrawn()
+        local asked = script({ { 1, "", "not found" } })
+        local src = "https://drive.google.com/file/d/GONE7/view"
+        attach.resolve(home .. "/d.md", src)
+        assert.are.equal(1, #notes)
+        assert.is_nil(attach.resolve(home .. "/d.md", src))
+        assert.are.equal(1, #asked)
+    end)
+
+    it("fetches a few at a time", function()
+        setup({ attachments = { rclone_remote = "gdrive:" } })
+        redrawn()
+        local pending = {}
+        attach._run = function(command, on_done) table.insert(pending, on_done) end
+        for i = 1, 5 do
+            attach.resolve(home .. "/d.md", "https://drive.google.com/file/d/MANY" .. i .. "/view")
+        end
+        assert.are.equal(3, #pending)
+        pending[1](1, "", "x")
+        assert.are.equal(4, #pending)
+        for i = 2, 4 do pending[i](1, "", "x") end
+        pending[5](1, "", "x")
+        assert.are.equal(5, #pending)
+    end)
+
+    it("has nothing to say about Drive with no remote", function()
+        setup()
+        assert.is_nil(attach.resolve(home .. "/d.md", "https://drive.google.com/file/d/X/view"))
+    end)
+end)

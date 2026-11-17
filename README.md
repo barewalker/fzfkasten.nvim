@@ -1546,7 +1546,7 @@ the history for good, and does not compress when the repository is encrypted.
 ```lua
 attachments = {
   home = "drive",
-  rclone_remote = "personal:",   -- a Drive remote from `rclone config`
+  rclone_remote = "gdrive:",     -- a Drive remote from `rclone config`
   drive_folder = "Notejo",       -- the same path Notejo is set to
   viewer = { "imv" },            -- nil: vim.ui.open
 },
@@ -1588,6 +1588,32 @@ fetched by its id through `rclone_remote`, a link under `webdav_url` through
 `webdav_remote` — no browser, and no signing in: rclone holds the credentials.
 That matters on WSL, where `vim.ui.open` hands everything to Windows; with
 `viewer` set to a Linux program the picture opens in a WSLg window instead.
+
+**Showing them in the note.** fzfkasten draws nothing itself, but it can hand a
+Drive or WebDAV picture to [snacks.image](https://github.com/folke/snacks.nvim/blob/main/docs/image.md),
+which draws `![](…)` in place on a terminal that speaks the kitty graphics
+protocol. To snacks a Drive link is a web page; `resolve` gives it the fetched
+file instead:
+
+```lua
+{
+  "folke/snacks.nvim",
+  opts = {
+    image = {
+      enabled = true,
+      resolve = function(file, src)
+        return require("fzfkasten.attach").resolve(file, src)
+      end,
+    },
+  },
+}
+```
+
+A picture already in `cache` is drawn at once. One that is not is fetched behind
+the note, three at a time, and the note is drawn again as each arrives. Paths in
+the repository and other addresses are left to snacks. Where the terminal cannot
+draw pictures (Windows Terminal, mosh) nothing changes, and `gf` still opens the
+viewer.
 
 Fetched files are kept in `cache` and opened from there the next time. One not
 opened for `keep_days` (30) is let go, and when the whole passes `keep_mb` (500)

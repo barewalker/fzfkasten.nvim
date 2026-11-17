@@ -589,7 +589,7 @@ M.defaults = {
   -- `rclone_remote`), "webdav" (`webdav_remote`), "repository"
   -- (`repo_folder`), or nil to leave it off.
   home = nil,
-  -- A Drive remote set up with `rclone config`, e.g. "personal:". Also what
+  -- A Drive remote set up with `rclone config`, e.g. "gdrive:". Also what
   -- Drive links are fetched through.
   rclone_remote = nil,
   -- The folder in Drive. Notejo's is "Notejo", at the top of My Drive.

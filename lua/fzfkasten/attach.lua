@@ -191,50 +191,153 @@ local function view_kept(dir, file)
     M.prune(dir, now)
 end
 
--- Fetch into the cache once, under `key`, then view. `command` is given the
--- folder to fetch into and answers with what to run.
-local function open_fetched(key, from, command)
-    local dir = cache_dir() .. "/" .. key
-    local have = vim.fn.glob(dir .. "/*", false, true)
-    if #have > 0 then
-        view_kept(dir, have[1])
-        return
-    end
-    vim.fn.mkdir(dir, "p")
-    vim.notify("[Fzfkasten] Fetching from " .. from .. "…", vim.log.levels.INFO)
-    M._run(command(dir), function(code, _, err)
-        local got = vim.fn.glob(dir .. "/*", false, true)
-        if code ~= 0 or #got == 0 then
-            vim.fn.delete(dir, "rf")
-            vim.notify("[Fzfkasten] Could not fetch it from " .. from .. ": " .. vim.trim(err),
-                vim.log.levels.ERROR)
-            return
+-- Where a Drive or WebDAV file is kept once fetched, what it is fetched from,
+-- and the command that fetches it into a folder. nil when it cannot be.
+local function source_of(what)
+    local opts = options()
+    if what.kind == "drive" and opts.rclone_remote then
+        -- Kept by id: a file renamed in Drive is still the same file, and
+        -- still already here.
+        return what.id, "Drive", function(dir)
+            return { "rclone", "backend", "copyid", opts.rclone_remote, what.id, dir .. "/" }
         end
-        view_kept(dir, got[1])
-    end)
+    elseif what.kind == "webdav" then
+        -- Through the rclone remote rather than the address, so the password
+        -- stays where rclone keeps it and no browser is asked to sign in.
+        local name = vim.fn.fnamemodify(what.path, ":t")
+        return "dav-" .. vim.fn.sha256(what.path):sub(1, 16), "WebDAV", function(dir)
+            return { "rclone", "copyto", under(opts.webdav_remote, what.path), dir .. "/" .. name }
+        end
+    end
 end
 
--- Kept by id: a file renamed in Drive is still the same file, and still
--- already here.
-local function open_drive(id)
-    local remote = options().rclone_remote
-    if not remote then
+local function kept_file(key)
+    return vim.fn.glob(cache_dir() .. "/" .. key .. "/*", false, true)[1]
+end
+
+-- One fetch per file however many ask, and a few at a time: a note of twenty
+-- pictures is not twenty rclones at once.
+local waiting = {} -- key -> the callbacks to answer
+local queue, running = {}, 0
+local AT_ONCE = 3
+
+local function pump()
+    while running < AT_ONCE and #queue > 0 do
+        local job = table.remove(queue, 1)
+        running = running + 1
+        local dir = cache_dir() .. "/" .. job.key
+        vim.fn.mkdir(dir, "p")
+        M._run(job.command(dir), function(code, _, err)
+            running = running - 1
+            local got = vim.fn.glob(dir .. "/*", false, true)[1]
+            if code ~= 0 or not got then
+                vim.fn.delete(dir, "rf")
+                got = nil
+            end
+            local callbacks = waiting[job.key]
+            waiting[job.key] = nil
+            for _, callback in ipairs(callbacks) do callback(got, vim.trim(err or "")) end
+            pump()
+        end)
+    end
+end
+
+-- Fetch into the cache under `key` and call back with (file) or (nil, why).
+local function fetch(key, command, callback)
+    if waiting[key] then
+        table.insert(waiting[key], callback)
+        return
+    end
+    waiting[key] = { callback }
+    table.insert(queue, { key = key, command = command })
+    pump()
+end
+
+-- Fetch once, then view; from the cache every time after.
+local function open_remote(what)
+    local key, from, command = source_of(what)
+    if not key then
         vim.notify("[Fzfkasten] attachments.rclone_remote is not set, so Drive links cannot be fetched.",
             vim.log.levels.WARN)
         return
     end
-    open_fetched(id, "Drive", function(dir)
-        return { "rclone", "backend", "copyid", remote, id, dir .. "/" }
+    local dir = cache_dir() .. "/" .. key
+    local have = kept_file(key)
+    if have then
+        view_kept(dir, have)
+        return
+    end
+    vim.notify("[Fzfkasten] Fetching from " .. from .. "…", vim.log.levels.INFO)
+    fetch(key, command, function(file, why)
+        if not file then
+            vim.notify("[Fzfkasten] Could not fetch it from " .. from .. ": " .. why, vim.log.levels.ERROR)
+            return
+        end
+        view_kept(dir, file)
     end)
 end
 
--- Fetched through the rclone remote rather than the address, so the password
--- stays where rclone keeps it and no browser is asked to sign in.
-local function open_webdav(what)
-    local name = vim.fn.fnamemodify(what.path, ":t")
-    open_fetched("dav-" .. vim.fn.sha256(what.path):sub(1, 16), "WebDAV", function(dir)
-        return { "rclone", "copyto", under(options().webdav_remote, what.path), dir .. "/" .. name }
+-- --- Showing in the note -----------------------------------------------------
+
+-- A picture of nothing, shown where one is still on its way: 1x1, clear.
+local BLANK = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+
+local function blank()
+    local path = cache_dir() .. "/blank.png"
+    if vim.fn.filereadable(path) == 0 then
+        vim.fn.mkdir(cache_dir(), "p")
+        local f = io.open(path, "wb")
+        if not f then return nil end
+        f:write(vim.base64.decode(BLANK))
+        f:close()
+    end
+    return path
+end
+
+-- Seam for the tests: have whatever draws pictures in `note` look again.
+-- snacks.image redraws a buffer on BufWinEnter.
+M._redraw = function(note)
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_loaded(buf) and vim.api.nvim_buf_get_name(buf) == note then
+            pcall(vim.api.nvim_exec_autocmds, "BufWinEnter", { buffer = buf })
+        end
+    end
+end
+
+local shown = {}  -- key -> true once its folder has been marked as opened
+local failed = {} -- key -> true: not asked for again until Neovim is restarted
+
+-- For snacks.image's `resolve`: the file to draw for the picture `src` linked
+-- from the note `file`, when it is one kept in Drive or the WebDAV folder.
+--
+--   image = { resolve = function(file, src)
+--     return require("fzfkasten.attach").resolve(file, src)
+--   end }
+--
+-- A picture already fetched is answered at once. One that is not is fetched
+-- behind the note, a blank standing in for it; the note is drawn again when it
+-- arrives. nil -- for anything else, so paths and other addresses are left to
+-- snacks -- and for a file that could not be fetched.
+function M.resolve(file, src)
+    local what = M.classify(src, file)
+    if not what or (what.kind ~= "drive" and what.kind ~= "webdav") then return nil end
+    local key, _, command = source_of(what)
+    if not key or failed[key] then return nil end
+    local have = kept_file(key)
+    if have then
+        if not shown[key] then
+            shown[key] = true
+            local now = os.time()
+            vim.uv.fs_utime(cache_dir() .. "/" .. key, now, now)
+        end
+        return have
+    end
+    shown[key] = true
+    fetch(key, command, function(got)
+        if not got then failed[key] = true end
+        M._redraw(file)
     end)
+    return blank()
 end
 
 -- Open whatever the link under the cursor points at. True when there was one.
@@ -243,10 +346,8 @@ function M.open_under_cursor()
     local col = vim.api.nvim_win_get_cursor(0)[2] + 1
     local what = M.classify(M.target_at(line, col), vim.api.nvim_buf_get_name(0))
     if not what then return false end
-    if what.kind == "drive" then
-        open_drive(what.id)
-    elseif what.kind == "webdav" then
-        open_webdav(what)
+    if what.kind == "drive" or what.kind == "webdav" then
+        open_remote(what)
     elseif what.kind == "web" then
         M.view(what.url)
     elseif vim.fn.filereadable(what.path) == 1 then
