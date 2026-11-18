@@ -318,7 +318,7 @@ Fzfkasten provides several commands for managing your Zettelkasten notes:
       alias = false,                 -- carry the line's text into the link
       alias_max = 40,                -- cutting it to this many characters
       daily_bullet = "- ",           -- in front of the link :FzfKastenLinkToDaily writes
-      on_tag = false,                -- mint an id as :FzfKastenTaskTag tags a line
+      on_tag = false,                -- mint an id as :FzfKastenTaskTag (or `m` in the list) tags a line
       on_capture = false,            -- and on a task :FzfKastenTaskAdd captures
     }
     ```
@@ -885,7 +885,7 @@ Priority `(A)` and a due date are optional; tasks sort by priority, then by due 
 
 A due date is `due:YYYY-MM-DD`, or `due:YYYY-MM-DDTHH:MM` when a time matters — ISO 8601, no space, so it stays one token you can drop anywhere in the line. Type it by hand, or let `:FzfKastenTaskDue` write it for you: `:FzfKastenTaskDue 2026-07-25` sets (or replaces) the due date on the current task, `:FzfKastenTaskDue 2026-07-25T15:00` adds a time, and `:FzfKastenTaskDue` with no argument clears it. It also takes a relative spec and works out the day: `tomorrow` (or `明日`), `+3d`, `2w`, a weekday name (`fri`, `金`, resolved to the nearest such day at or after today). What lands in the note is always the absolute date, though — the note is the ledger, and a bare `due:2026-07-25` reads the same in every editor and on your phone. The `<alt-a>` capture asks for a due the same way.
 
-**It works from the task list too**, on the row under the cursor: there the command writes the note the row came from rather than the line you are on, redraws the list, and is put back by `u` — the list's undo, like every other action there. The date is an argument, so there is no key for it to take: `:FzfKastenTaskDue fri` reads the same from a row as it does from the note.
+**It works from the task list too**, on the row under the cursor: there the command writes the note the row came from rather than the line you are on, redraws the list, and is put back by `u` — the list's undo, like every other action there. `:FzfKastenTaskDue fri` reads the same from a row as it does from the note, and `s` in the list asks for the date instead of taking it as an argument.
 
 | Key | Action |
 |---|---|
@@ -922,14 +922,15 @@ Tasks — 14   ·   priority
 |---|---|
 | `<enter>` | Open the note at this task |
 | `x` | Tick it off |
-| `c` | Drop it, keeping the line |
-| `t` | Add `require_tag` — promotes an inbox entry |
-| `a` | Capture a new task |
+| `X` | Drop it, keeping the line |
+| `m` | Mark it: add `require_tag` — promotes an inbox entry — and, under `block_id.on_tag`, mint its `^id` |
+| `c` | Capture a new task |
+| `s` | Schedule it: ask for a due date (an empty answer clears it) |
 | `u` | Put back the last line an action rewrote |
-| `s` / `S` | Cycle the ordering / reverse it |
+| `o` / `O` | Cycle the ordering / reverse it |
 | `T` | Narrow to one tag |
 | `D` | Cycle the due filter |
-| `X` | Show the done and cancelled too, then only them |
+| `z` | Show the done and cancelled too, then only them |
 | `=` | Cycle the grouping |
 | `i` | Switch between the task list and the inbox |
 | `r` | Re-scan the notes |
@@ -940,9 +941,9 @@ Tasks — 14   ·   priority
 | `<c-f>` / `<c-b>` | Scroll the preview a page |
 | `<c-e>` / `<c-y>` | Scroll the preview a line |
 
-Everything else is Vim's, untouched: `j`, `k`, `gg`, `G`, `/`, `n`, `{`, `}`, `<c-d>`, `<c-u>`. No modifier is needed for anything, which is the point — `x`, `c`, `a`, `u` read as delete, change, append, undo, so there is almost nothing to learn.
+Everything else is Vim's, untouched: `j`, `k`, `gg`, `G`, `/`, `n`, `{`, `}`, `<c-d>`, `<c-u>`. No modifier is needed for anything, which is the point. The letters name what they do — **c**apture, **x** tick, **X** cancel, **m**ark, **s**chedule, **u**ndo, **o**rder — so the same letters can follow your prefix in a note (`<leader>kc` → `:FzfKastenTaskAdd`, `<leader>kx` → `:FzfKastenTaskToggle`, `<leader>kX` → `:FzfKastenTaskCancel`, `<leader>km` → `:FzfKastenTaskTag`, `<leader>ks` → `:FzfKastenTaskDue`) and a key means one thing in both places.
 
-Due dates have no key here because they need a date: `:FzfKastenTaskDue fri` sets one on the row under the cursor, writing the note that row came from, and `u` puts it back like any other action.
+`s` asks for the due date and takes what `:FzfKastenTaskDue` takes (`fri`, `+3d`, `2026-07-25`); the command itself works on the row under the cursor too. Either way it writes the note that row came from, and `u` puts it back like any other action.
 
 **It is a listed buffer**, so a bufferline shows it as a tab and you switch back to it the way you switch to any open file — `<s-h>`/`<s-l>`, `:b`, `<c-^>`. That matters more than it sounds: a list you glance at all day should not need a keystroke to summon each time. Switching back re-scans the notes and puts the preview back, so what you return to is the current state, not the state you left. Set `list.listed = false` to keep it out of the buffer list.
 
@@ -988,8 +989,8 @@ tasks = {
     -- Every key is configurable, the preview's included. Each entry is a key,
     -- a list of keys (all bound to that action), or false to leave it to Vim.
     keys = {
-      done = "x", cancel = "c", sort = "s",
-      filter_tag = "T", filter_due = "D", closed = "X", group = "=",
+      done = "x", cancel = "X", add = "c", tag = "m", due = "s", sort = "o",
+      filter_tag = "T", filter_due = "D", closed = "z", group = "=",
       preview = "p", preview_toggle = "P",
       preview_back = { "<Esc>", "<C-q>" },   -- pressed inside the preview window
       preview_half_page_down = "<C-d>", preview_half_page_up = "<C-u>",
@@ -1043,7 +1044,7 @@ ordering does.
 |---|---|---|---|
 | Tag | `<alt-t>` | `T` | Keeps the tasks filed under one tag, chosen from the tags the tasks in view carry. A step of a tagged job counts as tagged |
 | Due | `<alt-e>` | `D` | `overdue` → `due by today` → `due this week` (the next seven days) → `no due date` → off. Each of the first three includes the one before it, since what was due on Tuesday is still due by Friday |
-| Closed | `<alt-x>` | `X` | Shows the done and cancelled too, marked `✓` / `✗`, then only them — where to look for "did I already do this?". `<ctrl-x>`/`x` on a done row reopens it |
+| Closed | `<alt-x>` | `z` | Shows the done and cancelled too, marked `✓` / `✗`, then only them — where to look for "did I already do this?". `<ctrl-x>`/`x` on a done row reopens it |
 | Group | `<alt-g>` | `=` | Divides the list by note, by tag, or by due date (overdue, today, within a week, later, none) |
 
 **A step takes its job's due date** when it has none of its own, for both the

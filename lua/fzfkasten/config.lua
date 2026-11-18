@@ -408,24 +408,28 @@ M.defaults = {
     height = 0.5,
    },
    -- Buffer-local normal-mode keys. Unmodified letters on purpose -- the whole
-   -- point of the buffer is that everything else is Vim's. `x`/`c`/`a`/`u`
-   -- read as delete/change/append/undo, which is most of what they do.
+   -- point of the buffer is that everything else is Vim's. The letters name
+   -- what they do -- [c]apture, [x] tick, [X] cancel, [m]ark, [s]chedule,
+   -- [u]ndo, [o]rder -- so the same letter can follow your prefix in a note
+   -- (`<leader>kc` -> :FzfKastenTaskAdd, `<leader>kX` -> :FzfKastenTaskCancel)
+   -- and a key means one thing in both places.
    --
    -- Each entry is a key, a list of keys (all bound to that action), or
    -- `false` to leave the key to Vim.
    keys = {
     open = "<CR>",   -- open the note at this task
     done = "x",      -- tick it off
-    cancel = "c",    -- drop it, keeping the line
-    tag = "t",       -- add require_tag (promotes an inbox entry)
-    add = "a",       -- capture a new task
+    cancel = "X",    -- drop it, keeping the line
+    tag = "m",       -- mark it: add require_tag (promotes an inbox entry)
+    add = "c",       -- capture a new task
+    due = "s",       -- schedule it: ask for a due date (empty clears it)
     undo = "u",      -- put back the last line an action rewrote
-    sort = "s",      -- cycle priority -> due -> added
-    reverse = "S",   -- flip the order
+    sort = "o",      -- cycle the order: priority -> due -> added
+    reverse = "O",   -- flip the order
     inbox = "i",     -- switch between the task list and the inbox
     filter_tag = "T", -- show only the tasks filed under one tag
     filter_due = "D", -- cycle overdue -> due by today -> this week -> no due -> all
-    closed = "X",    -- cycle open -> also done/cancelled -> only those
+    closed = "z",    -- cycle open -> also done/cancelled -> only those
     group = "=",     -- cycle grouping by note -> tag -> due -> none
     refresh = "r",   -- re-scan the notes
     close = "q",

@@ -1399,7 +1399,14 @@ function M.tag_at(path, lineno)
 
     -- Through tag_line, so the tag goes in ahead of a `^id` the way
     -- `:FzfKastenTaskTag` puts it, rather than after it.
-    lines[lineno] = tag_line(line, tag)
+    local tagged = tag_line(line, tag)
+    -- And an id with it under `block_id.on_tag`, as `:FzfKastenTaskTag`
+    -- mints one: the same key has to leave the same line behind whether it
+    -- was pressed in the note or on the row.
+    if (config.options.block_id or {}).on_tag and not utils.block_id(tagged) then
+        tagged = utils.with_block_id(tagged, utils.new_block_id(utils.block_ids(lines)))
+    end
+    lines[lineno] = tagged
     vim.fn.writefile(lines, path)
     remember(path, lineno, line, lines[lineno])
     if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then

@@ -159,11 +159,32 @@ describe("tasklist: keys reach the notes", function()
         assert.are.equal("- [ ] alpha #todo", read("n.md")[1])
     end)
 
-    it("c drops the task but keeps the line", function()
+    it("X drops the task but keeps the line", function()
         goto_row("beta")
-        press("c")
+        press("X")
         -- The tag is part of the task's text, so it goes inside the strike.
         assert.is_truthy(read("n.md")[2]:match("^%- %[%-%] ~~beta #todo~~ cancelled:"))
+    end)
+
+    it("s asks for a due date and writes it on the task", function()
+        local asked = vim.ui.input
+        vim.ui.input = function(_, on_confirm) on_confirm("2026-12-24") end
+        goto_row("beta")
+        press("s")
+        vim.wait(1000, function() return read("n.md")[2]:find("2026-12-24", 1, true) ~= nil end)
+        vim.ui.input = asked
+        assert.is_truthy(read("n.md")[2]:find("2026-12-24", 1, true))
+        assert.are.equal("- [ ] alpha #todo", read("n.md")[1])
+    end)
+
+    it("s leaves the task alone when the question is dismissed", function()
+        local asked = vim.ui.input
+        vim.ui.input = function(_, on_confirm) on_confirm(nil) end
+        goto_row("beta")
+        press("s")
+        vim.wait(100)
+        vim.ui.input = asked
+        assert.are.equal("- [ ] beta #todo", read("n.md")[2])
     end)
 
     it("the list redraws itself after an action", function()
@@ -262,16 +283,16 @@ describe("tasklist: changing the view", function()
         tasklist.open()
     end)
 
-    it("s cycles the ordering", function()
+    it("o cycles the ordering", function()
         assert.is_truthy(lines()[1]:find("priority", 1, true))
-        press("s")
+        press("o")
         assert.is_truthy(lines()[1]:find("due", 1, true))
-        press("s")
+        press("o")
         assert.is_truthy(lines()[1]:find("added", 1, true))
     end)
 
-    it("S reverses it, and the heading says so", function()
-        press("S")
+    it("O reverses it, and the heading says so", function()
+        press("O")
         assert.is_truthy(lines()[1]:find("reversed", 1, true))
         assert.is_truthy(lines()[3]:find("late", 1, true))
     end)
@@ -328,18 +349,18 @@ describe("tasklist: filtering and grouping", function()
         assert.are.equal("  Nothing in this view.", lines()[3])
     end)
 
-    it("X shows the closed tasks too, then only them, marked", function()
-        press("X")
+    it("z shows the closed tasks too, then only them, marked", function()
+        press("z")
         assert.is_truthy(lines()[1]:find("closed too", 1, true))
         assert.are.equal(4, vim.tbl_count(tasklist._test.rows()))
-        press("X")
+        press("z")
         assert.are.equal("✓ finished", lines()[3])
-        press("X")
+        press("z")
         assert.are.equal(3, vim.tbl_count(tasklist._test.rows()))
     end)
 
     it("x on a closed row reopens it", function()
-        press("X") press("X")
+        press("z") press("z")
         goto_row("finished")
         press("x")
         assert.are.equal("- [ ] finished #todo", read("a.md")[3])
@@ -467,11 +488,31 @@ describe("tasklist: configuration", function()
         assert.are.equal("Tick this task off", desc["x"])
         assert.are.equal("Preview: half page down", desc["<C-D>"])
         -- Reads the configured tag, so it says what it will actually write.
-        assert.are.equal("Make this mine (#todo)", desc["t"])
+        assert.are.equal("Make this mine (#todo)", desc["m"])
         for lhs, d in pairs(desc) do
             assert.is_truthy(d and d ~= "", lhs .. " has no description")
             assert.is_nil(d:find("_"), lhs .. " shows an internal name: " .. tostring(d))
         end
+    end)
+
+    -- `:FzfKastenTaskTag` mints an id under `block_id.on_tag`; the row's key
+    -- is the same action and has to leave the same line behind.
+    it("m mints an id along with the tag when block_id.on_tag is set", function()
+        setup({ tasks = { require_tag = "todo" }, block_id = { on_tag = true } })
+        note("n.md", { "- [ ] loose" })
+        tasklist.open({ inbox = true })
+        goto_row("loose")
+        press("m")
+        assert.is_truthy(read("n.md")[1]:match("^%- %[ %] loose #todo %^[a-z0-9]+$"))
+    end)
+
+    it("m adds only the tag when block_id.on_tag is off", function()
+        setup({ tasks = { require_tag = "todo" } })
+        note("n.md", { "- [ ] loose" })
+        tasklist.open({ inbox = true })
+        goto_row("loose")
+        press("m")
+        assert.are.equal("- [ ] loose #todo", read("n.md")[1])
     end)
 
     it("takes a different key for an action", function()

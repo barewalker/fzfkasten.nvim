@@ -498,6 +498,20 @@ local ACTIONS = {
         end,
         fn = on_task(function(task) tasks.tag_at(task.path, task.lineno) end),
     },
+    due = {
+        desc = "Set the due date (empty clears it)",
+        -- Deferred for the same reason as `add`: it steps out to an input.
+        -- The row is looked up before asking, so the date lands on the task
+        -- the key was pressed on even if the list is redrawn meanwhile.
+        fn = on_task(function(task)
+            vim.schedule(function()
+                vim.ui.input({ prompt = "Due: ", default = task.due or "" }, function(date)
+                    if date == nil then return end
+                    tasks.due_at(task.path, task.lineno, vim.trim(date))
+                end)
+            end)
+        end),
+    },
     undo = {
         desc = "Put back the last line changed",
         fn = tasks.undo,

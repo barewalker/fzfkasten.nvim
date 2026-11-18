@@ -157,9 +157,9 @@ COMMANDS
   filtered out, carries that line along instead (`task  <- context`).
 - FzfKastenTaskList: The same tasks as an ordinary buffer, worked with Vim
   keys -- j/k/gg/G// are Vim's, and the actions are unmodified letters:
-  <enter> open, x done, c cancel, t tag, a add, u undo, s/S sort/reverse,
-  T tag filter, D due filter, X show closed, = group, i inbox, r rescan,
-  q close. The filters and grouping are the picker's, shown in the heading;
+  <enter> open, x done, X cancel, m mark (tag), c capture, s schedule (asks
+  for a due date), u undo, o/O order/reverse, T tag filter, D due filter,
+  z show closed, = group, i inbox, r rescan, q close. The filters and grouping are the picker's, shown in the heading;
   a group is a heading over its rows. Nothing is mapped that Vim needs. The buffer is
   never written; actions rewrite the notes and it redraws from disk.
   A split below previews the task's note around its line, following the
