@@ -586,4 +586,12 @@ describe("showing a picture in the note", function()
         setup()
         assert.is_nil(attach.resolve(home .. "/d.md", "https://drive.google.com/file/d/X/view"))
     end)
+
+    it("reports a command that is not installed as a failed run", function()
+        local code, err
+        real_run({ "fzfkasten-no-such-command" }, function(c, _, e) code, err = c, e end)
+        vim.wait(1000, function() return code ~= nil end)
+        assert.are.equal(127, code)
+        assert.is_truthy(err:find("fzfkasten-no-such-command is not installed", 1, true))
+    end)
 end)

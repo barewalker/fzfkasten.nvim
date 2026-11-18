@@ -132,12 +132,20 @@ function M.view(path)
 end
 
 -- Seam for the tests: run a command and call back with (code, stdout, stderr).
+-- `vim.system` raises rather than returning a status when the command is not
+-- installed, so that case is reported here as a failed run like any other.
 M._run = function(command, on_done)
-    vim.system(command, { text = true }, function(result)
+    local ok, err = pcall(vim.system, command, { text = true }, function(result)
         vim.schedule(function()
             on_done(result.code, result.stdout or "", result.stderr or "")
         end)
     end)
+    if ok then return end
+    local reason = tostring(err)
+    if vim.fn.executable(command[1]) ~= 1 then
+        reason = command[1] .. " is not installed (or not on PATH)"
+    end
+    vim.schedule(function() on_done(127, "", reason) end)
 end
 
 local function cache_dir()
