@@ -472,6 +472,21 @@ function M.find_notes()
 
     fzf.fzf_live(function(args) return notes_for_query(index, args[1]) end, opts)
 end
+-- Put the cursor where a picker entry points, in the buffer just opened.
+--
+-- Clamped, because `nvim_win_set_cursor` throws on a position the buffer does
+-- not have, and an entry can name one: the note is shorter in an unsaved buffer
+-- than on the disk that was searched, or the column came out of the entry's
+-- text rather than out of the search.
+--- @param line integer 1-indexed
+--- @param col integer|nil 1-indexed; the head of the line when nil
+local function jump_to(line, col)
+    line = math.max(1, math.min(tonumber(line) or 1, vim.api.nvim_buf_line_count(0)))
+    local text = vim.api.nvim_buf_get_lines(0, line - 1, line, false)[1] or ""
+    col = math.max(0, math.min((tonumber(col) or 1) - 1, math.max(#text - 1, 0)))
+    vim.api.nvim_win_set_cursor(0, { line, col })
+end
+
 function M.search_tags()
     -- Use a regex that strictly matches #tag
     local rg_tag_pattern = "#[a-zA-Z0-9_-]+"
@@ -488,7 +503,7 @@ function M.search_tags()
                 local entry = fzf.path.entry_to_file(selected[1], { cwd = config.options.home })
                 buffer.edit(entry.path)
                 if entry.line then
-                    vim.api.nvim_win_set_cursor(0, { entry.line, (entry.col or 1) - 1 })
+                    jump_to(entry.line, entry.col)
                 end
             end
         }
@@ -545,7 +560,7 @@ function M.search_by_tag()
                             local entry = fzf.path.entry_to_file(grep_selected[1], { cwd = config.options.home })
                             buffer.edit(entry.path)
                             if entry.line then
-                                vim.api.nvim_win_set_cursor(0, { entry.line, (entry.col or 1) - 1 })
+                                jump_to(entry.line, entry.col)
                             end
                         end
                     }
@@ -597,7 +612,7 @@ function M.search_content(filter)
         local entry = fzf.path.entry_to_file(selected[1], { cwd = config.options.home })
         buffer.edit(entry.path)
         if entry.line then
-            vim.api.nvim_win_set_cursor(0, { entry.line, (entry.col or 1) - 1 })
+            jump_to(entry.line, entry.col)
         end
     end
 
@@ -718,7 +733,10 @@ function M.show_backlinks(filepath)
                 if entry.path then
                     buffer.edit(entry.path)
                     if entry.line then
-                        vim.api.nvim_win_set_cursor(0, { entry.line, (entry.col or 1) - 1 })
+                        -- No column: the entry is "path:line: text", and a
+                        -- `:` in the text (a time like 15:00, a URL) reads to
+                        -- `entry_to_file` as one.
+                        jump_to(entry.line)
                     end
                 else
                     vim.notify("Could not open backlink: " .. selected_backlink[1], vim.log.levels.ERROR)
@@ -1560,6 +1578,7 @@ end
 -- the backlink walk sat inside a picker. Exposed for the tests rather than
 -- widened into the API.
 M._test = {
+    jump_to = jump_to,
     note_index = note_index,
     notes_for_query = notes_for_query,
     find_header = find_header,

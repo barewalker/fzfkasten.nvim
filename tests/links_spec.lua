@@ -109,6 +109,46 @@ describe("link_under_cursor", function()
     end)
 end)
 
+-- A picker entry is "path:line:col: text" or "path:line: text", and what
+-- fzf-lua reads out of it need not be a place the buffer has: a time in the
+-- text of a backlink ("12:30 [[note]]") comes back as a column.
+describe("jump_to", function()
+    before_each(function()
+        vim.cmd("enew!")
+        vim.api.nvim_buf_set_lines(0, 0, -1, false, { "short", "", "a longer line" })
+    end)
+    after_each(function() vim.cmd("bwipeout!") end)
+
+    local function cursor() return vim.api.nvim_win_get_cursor(0) end
+
+    it("goes to the line and column asked for", function()
+        t.jump_to(3, 3)
+        assert.are.same({ 3, 2 }, cursor())
+    end)
+
+    it("goes to the head of the line with no column", function()
+        t.jump_to(3)
+        assert.are.same({ 3, 0 }, cursor())
+    end)
+
+    it("stops at the end of the line for a column past it", function()
+        t.jump_to(1, 31)
+        assert.are.same({ 1, 4 }, cursor())
+    end)
+
+    it("copes with column 0 and an empty line", function()
+        t.jump_to(1, 0)
+        assert.are.same({ 1, 0 }, cursor())
+        t.jump_to(2, 9)
+        assert.are.same({ 2, 0 }, cursor())
+    end)
+
+    it("stops at the last line for a line past it", function()
+        t.jump_to(99, 1)
+        assert.are.same({ 3, 0 }, cursor())
+    end)
+end)
+
 describe("collect_backlinks", function()
     before_each(setup)
     after_each(cleanup)
